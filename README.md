@@ -379,9 +379,9 @@ MIT License - see [LICENSE](LICENSE) for details
 
 ## 📬 Contact
 
-**Author**: [Your Name]  
-**LinkedIn**: [Your LinkedIn]  
-**Email**: [Your Email]
+**Author**: [Preetham Dandu]  
+**LinkedIn**: [(https://www.linkedin.com/in/preetham-dandu/)]  
+**Email**: [preethamdandu8@gmail.com]
 
 ---
 
