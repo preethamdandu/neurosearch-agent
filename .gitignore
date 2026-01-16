@@ -1,0 +1,28 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+*.cache
+*.log
+
+# Rider
+.idea/
+
+# Visual Studio
+.vs/
+
+# Environment
+.env
+appsettings.Development.json
+
+# Qdrant Data
+qdrant_data/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Publishing
+publish/
+*.pubxml

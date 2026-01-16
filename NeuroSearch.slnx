@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/NeuroSearch.Agent/NeuroSearch.Agent.csproj" />
+    <Project Path="src/NeuroSearch.Core/NeuroSearch.Core.csproj" />
+    <Project Path="src/NeuroSearch.Plugins/NeuroSearch.Plugins.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/NeuroSearch.Tests/NeuroSearch.Tests.csproj" />
+  </Folder>
+</Solution>
