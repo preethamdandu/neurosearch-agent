@@ -371,7 +371,7 @@ MIT License - see [LICENSE](LICENSE) for details
 - Production architecture design
 - Testing best practices
 
-**Built for**: Microsoft, Rubrik, Datadog, and similar enterprise companies seeking engineers who understand security, testing, and production readiness.
+**Built for**: companies seeking engineers who understand security, testing, and production readiness.
 
 **Key Achievement**: **43/43 security tests passing** with zero vulnerabilities found
 
