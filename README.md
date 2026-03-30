@@ -7,7 +7,7 @@
 [![.NET](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet)](https://dotnet.microsoft.com/)
 [![Security Tests](https://img.shields.io/badge/security_tests-43%2F43_passing-success)](./SECURITY_AUDIT.md)
 [![OWASP](https://img.shields.io/badge/OWASP-compliant-brightgreen)](https://owasp.org/)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-All_rights_reserved-lightgrey.svg)](LICENSE)
 
 *An intelligent research assistant that autonomously searches the web, extracts information, and provides comprehensive answers using local LLM inference.*
 
@@ -353,13 +353,13 @@ This is a portfolio project demonstrating security-first engineering. While not 
 - ✅ Clean architecture patterns
 - ✅ Production-grade documentation
 
-Feel free to fork and adapt for your own projects!
+Use, copying, modification, and distribution require prior written permission from the copyright holder. See [LICENSE](LICENSE).
 
 ---
 
 ## 📄 License
 
-MIT License - see [LICENSE](LICENSE) for details
+Proprietary — all rights reserved. See [LICENSE](LICENSE).
 
 ---
 
