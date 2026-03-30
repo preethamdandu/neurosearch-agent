@@ -7,7 +7,7 @@
 [![.NET](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet)](https://dotnet.microsoft.com/)
 [![Security Tests](https://img.shields.io/badge/security_tests-43%2F43_passing-success)](./SECURITY_AUDIT.md)
 [![OWASP](https://img.shields.io/badge/OWASP-compliant-brightgreen)](https://owasp.org/)
-[![License](https://img.shields.io/badge/license-All_rights_reserved-lightgrey.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 *An intelligent research assistant that autonomously searches the web, extracts information, and provides comprehensive answers using local LLM inference.*
 
@@ -347,20 +347,28 @@ MAX_TOKENS_PER_ITERATION=4000
 
 ## 🤝 Contributing
 
-This is a portfolio project demonstrating security-first engineering. While not actively maintained for production use, it showcases:
+You are welcome to use this project, learn from it, and submit improvements (issues, pull requests, or forks).
 
-- ✅ OWASP security best practices
-- ✅ Comprehensive test coverage
-- ✅ Clean architecture patterns
-- ✅ Production-grade documentation
+Please read **[Attribution](#-attribution)** below and keep the **copyright notice and full [LICENSE](LICENSE)** with any copy or derivative work so others know who wrote the original code.
 
-Use, copying, modification, and distribution require prior written permission from the copyright holder. See [LICENSE](LICENSE).
+---
+
+## ✨ Attribution
+
+**Original author:** [Preetham Dandu](https://github.com/preethamdandu) (`preethamdandu`), © 2026.
+
+If you use, modify, or redistribute this software (including in private or public projects), you **must**:
+
+1. **Keep the copyright line and license** — Include the `LICENSE` file (or the same copyright + permission text) with source or binary distributions, as required by the [MIT License](LICENSE).
+2. **Make authorship visible** — In README, docs, or an “About” screen for your derivative, state that the NeuroSearch Agent code is based on or includes work by **Preetham Dandu**, and link to this repository when practical: `https://github.com/preethamdandu/neurosearch-agent`
+
+That way people can see you built the original implementation, and credit stays honest as the project evolves.
 
 ---
 
 ## 📄 License
 
-Proprietary — all rights reserved. See [LICENSE](LICENSE).
+Released under the [MIT License](LICENSE) — free to use and improve; **attribution required** as described above.
 
 ---
 
@@ -381,8 +389,8 @@ Proprietary — all rights reserved. See [LICENSE](LICENSE).
 ## 📬 Contact
 
 **Author**: [Preetham Dandu]  
-**LinkedIn**: [(https://www.linkedin.com/in/preetham-dandu/)]  
-**Email**: [preethamdandu8@gmail.com]
+**LinkedIn**: [preetham-dandu](https://www.linkedin.com/in/preetham-dandu/)  
+**Email**: preethamdandu8@gmail.com
 
 ---
 
@@ -390,6 +398,6 @@ Proprietary — all rights reserved. See [LICENSE](LICENSE).
 
 **⭐ If this project demonstrates the kind of security-first engineering you value, please star it!**
 
-[Report Issue](https://github.com/yourusername/neurosearch-agent/issues) • [Request Feature](https://github.com/yourusername/neurosearch-agent/issues)
+[Report Issue](https://github.com/preethamdandu/neurosearch-agent/issues) • [Request Feature](https://github.com/preethamdandu/neurosearch-agent/issues)
 
 </div>
