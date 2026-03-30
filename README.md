@@ -335,6 +335,7 @@ MAX_TOKENS_PER_ITERATION=4000
 
 ## 📚 Documentation
 
+- ⚡ **[Quick start](./QUICKSTART.md)** - Minimal steps from clone to run
 - 📖 **[Setup Guide](./SETUP.md)** - Detailed installation instructions
 - 🔒 **[Security Audit](./SECURITY_AUDIT.md)** - Comprehensive test report
 - 🧪 **[Testing Protocol](./BRUTAL_TESTING.md)** - Brutal testing methodology

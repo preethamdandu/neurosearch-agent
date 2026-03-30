@@ -16,6 +16,10 @@ obj/
 .env
 appsettings.Development.json
 
+# Local test output (often contains absolute paths)
+test-results.txt
+phase2-results.txt
+
 # Qdrant Data
 qdrant_data/
 

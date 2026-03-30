@@ -1,3 +1,5 @@
-#!/bin/bash
-cd "/Users/preethamdandu/Desktop/c# and .net projects/NeuroSearch Agent/src/NeuroSearch.Agent"
+#!/usr/bin/env bash
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR/src/NeuroSearch.Agent"
 echo "What is 2+2?" | dotnet run

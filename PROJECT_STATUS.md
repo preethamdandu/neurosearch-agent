@@ -65,7 +65,7 @@
 - ✅ `docs/RESUME_BULLETS.md` - Ready-to-use bullets
 
 **Test Reports**:
-- ✅ `TEST_RESULTS.md` - Detailed security validation report
+- ✅ `SECURITY_AUDIT.md` - Detailed security validation report
 - ✅ `TEST_EXECUTION_LOG.md` - Test execution tracker
 
 ---
@@ -158,7 +158,6 @@ Even without runtime, you can demonstrate:
 
 3. **Documentation Quality**
    - Show `SECURITY_AUDIT.md` - Principal-level report
-   - Show `TEST_RESULTS.md` - Detailed metrics
    - Show `BRUTAL_TESTING.md` - Testing protocol
 
 4. **GitHub Repository**
