@@ -388,7 +388,7 @@ Released under the [MIT License](LICENSE) — free to use and improve; **attribu
 
 ## 📬 Contact
 
-**Author**: [Preetham Dandu]  
+**Author**: Preetham Dandu ([@preethamdandu](https://github.com/preethamdandu))  
 **LinkedIn**: [preetham-dandu](https://www.linkedin.com/in/preetham-dandu/)  
 **Email**: preethamdandu8@gmail.com
 
