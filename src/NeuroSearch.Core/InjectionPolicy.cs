@@ -82,42 +82,44 @@ public sealed class InjectionPolicy
             }
         }
 
-        // 4. Exfiltration — ENFORCEMENT is structural only:
-        //    (a) host allowlist / provenance (URL must appear in the user request)
-        //    (b) trusted-context substring leak in outbound args
-        // Shape/entropy heuristics are ADVISORY (logged) — never the deny reason.
-        // Do NOT key enforcement on fixture-shaped hosts (attacker.*, evil.*, .test).
-        if (_state.Defenses.ExfilCheck && IsOutboundNetwork(pluginName, functionName))
+        // 4. Outbound host allowlist / provenance — ENFORCING (part of Allowlist).
+        //    Shape/entropy heuristics are ADVISORY only (gated by ExfilCheck for
+        //    log volume in tests). ExfilCheck is NOT an enforcement control —
+        //    demoted after the fixture-shaped attacker.* investigation.
+        if (IsOutboundNetwork(pluginName, functionName))
         {
             var url = GetArg(args, "url") ?? GetArg(args, "query") ?? string.Empty;
             var argBlob = string.Join("&", args.Select(kv => $"{kv.Key}={kv.Value}"));
 
-            if (IsScraper(pluginName, functionName))
+            if (_state.Defenses.Allowlist)
             {
-                if (!_state.IsUrlAuthorized(url))
+                if (IsScraper(pluginName, functionName) && !_state.IsUrlAuthorized(url))
                 {
-                    LogExfilShapeAdvisory(url);
+                    if (_state.Defenses.ExfilCheck)
+                        LogExfilShapeAdvisory(url);
                     LogSecondarySignalIfPresent(url);
                     return PolicyDecision.Block(
                         "exfiltration",
                         $"Blocked WebScraper call to unauthorized host '{Truncate(url, 120)}'. " +
                         "Outbound hosts must appear in the user's request (allowlist / provenance).");
                 }
+
+                // Provenance-based context leak — structural, not fixture-shaped
+                if (_state.LooksLikeContextExfiltration(argBlob) ||
+                    _state.LooksLikeContextExfiltration(url))
+                {
+                    if (_state.Defenses.ExfilCheck)
+                        LogExfilShapeAdvisory(url);
+                    return PolicyDecision.Block(
+                        "exfiltration",
+                        "Blocked outbound call: trusted-context substring appears in arguments " +
+                        "(context-leak / provenance check).");
+                }
             }
 
-            // Provenance-based: a trusted non-URL context substring in outbound args
-            if (_state.LooksLikeContextExfiltration(argBlob) ||
-                _state.LooksLikeContextExfiltration(url))
-            {
+            // ADVISORY (logged, non-enforcing) — ExfilCheck only toggles this log
+            if (_state.Defenses.ExfilCheck)
                 LogExfilShapeAdvisory(url);
-                return PolicyDecision.Block(
-                    "exfiltration",
-                    "Blocked outbound call: trusted-context substring appears in arguments " +
-                    "(context-leak / provenance check).");
-            }
-
-            // Advisory only — never blocks
-            LogExfilShapeAdvisory(url);
         }
 
         // Secondary signal (logged only — NEVER the enforcement point)

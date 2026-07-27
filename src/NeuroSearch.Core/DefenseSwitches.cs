@@ -5,12 +5,17 @@ namespace NeuroSearch.Core;
 /// Defaults to all-on. MUST NOT be loaded from env vars, appsettings, or CLI —
 /// shipping a runtime kill switch for security controls is forbidden.
 /// Set only by constructing InjectionSessionState in test/benchmark code.
+///
+/// Enforcing (6): ContentSanitizer, DelimiterNeutralizer, SpotlightWrapper,
+/// TaintedSinkRule, Allowlist (tools + outbound hosts/provenance), Budget.
+/// Advisory only: ExfilCheck — toggles shape/entropy LOG volume; never denies.
 /// </summary>
 public sealed record DefenseSwitches(
     bool ContentSanitizer = true,
     bool DelimiterNeutralizer = true,
     bool SpotlightWrapper = true,
     bool TaintedSinkRule = true,
+    /// <summary>ADVISORY: log exfil-shape signals. Non-enforcing.</summary>
     bool ExfilCheck = true,
     bool Allowlist = true,
     bool Budget = true)
