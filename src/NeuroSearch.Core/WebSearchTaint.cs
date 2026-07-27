@@ -15,10 +15,16 @@ public static class WebSearchTaint
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(result);
 
-        if (result.Hits.Count == 0)
+        if (result.Hits.Count == 0 && string.IsNullOrWhiteSpace(result.ProviderAnswer))
             return "No results found for this query.";
 
-        var parts = new List<string>(result.Hits.Count);
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(result.ProviderAnswer))
+        {
+            // Tavily (and similar) may return a top-level answer — same threat as snippets.
+            parts.Add($"ProviderAnswer:\n{result.ProviderAnswer}");
+        }
+
         foreach (var hit in result.Hits)
         {
             var block =
@@ -35,6 +41,9 @@ public static class WebSearchTaint
                 block += $"\n[research_hop={hopDepth}]";
             parts.Add(block);
         }
+
+        if (parts.Count == 0)
+            return "No results found for this query.";
 
         var formatted = string.Join("\n\n", parts);
         var origin = $"{result.ProviderName}:search:hop{hopDepth}:{result.Query}";

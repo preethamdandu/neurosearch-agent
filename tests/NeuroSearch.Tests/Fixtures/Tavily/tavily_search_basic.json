@@ -1,5 +1,8 @@
 {
-  "query": "attention is all you need",
+  "query": "transformer architecture self-attention",
+  "follow_up_questions": null,
+  "answer": null,
+  "images": [],
   "results": [
     {
       "title": "Attention Is All You Need",
@@ -22,5 +25,7 @@
       "raw_content": null,
       "score": 0.80
     }
-  ]
+  ],
+  "response_time": 0.0,
+  "request_id": "redacted"
 }

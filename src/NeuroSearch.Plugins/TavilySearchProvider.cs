@@ -17,6 +17,9 @@ public sealed class TavilySearchProvider : IWebSearchProvider
 
     public string Name => "tavily";
 
+    /// <summary>Last raw JSON body (for live-verify fixture reconciliation). Never log secrets from it.</summary>
+    public string? LastRawJson { get; private set; }
+
     public TavilySearchProvider(HttpClient httpClient, string apiKey, string searchDepth = "basic")
     {
         _http = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
@@ -41,8 +44,8 @@ public sealed class TavilySearchProvider : IWebSearchProvider
         using var response = await _http.PostAsJsonAsync(Endpoint, request, cancellationToken);
         response.EnsureSuccessStatusCode();
 
-        var payload = await response.Content.ReadFromJsonAsync<TavilyResponse>(
-            cancellationToken: cancellationToken);
+        LastRawJson = await response.Content.ReadAsStringAsync(cancellationToken);
+        var payload = System.Text.Json.JsonSerializer.Deserialize<TavilyResponse>(LastRawJson);
 
         var results = payload?.Results ?? Array.Empty<TavilyResult>();
         var hits = results
@@ -55,14 +58,15 @@ public sealed class TavilySearchProvider : IWebSearchProvider
                 ProviderName: Name))
             .ToList();
 
-        return new WebSearchProviderResult(hits, Name, query);
+        return new WebSearchProviderResult(hits, Name, query, payload?.Answer);
+
     }
 
     /// <summary>Map a recorded Tavily JSON fixture into the neutral type (unit tests).</summary>
     public static WebSearchProviderResult FromFixtureJson(string json, string query = "fixture")
     {
         var payload = System.Text.Json.JsonSerializer.Deserialize<TavilyResponse>(json)
-            ?? new TavilyResponse(null);
+            ?? new TavilyResponse(null, null);
         var results = payload.Results ?? Array.Empty<TavilyResult>();
         var hits = results
             .Select((r, i) => new WebSearchHit(
@@ -73,7 +77,7 @@ public sealed class TavilySearchProvider : IWebSearchProvider
                 Rank: i + 1,
                 ProviderName: "tavily"))
             .ToList();
-        return new WebSearchProviderResult(hits, "tavily", query);
+        return new WebSearchProviderResult(hits, "tavily", query, payload.Answer);
     }
 
     private sealed class TavilyRequest
@@ -95,7 +99,8 @@ public sealed class TavilySearchProvider : IWebSearchProvider
     }
 
     private sealed record TavilyResponse(
-        [property: JsonPropertyName("results")] TavilyResult[]? Results);
+        [property: JsonPropertyName("results")] TavilyResult[]? Results,
+        [property: JsonPropertyName("answer")] string? Answer);
 
     private sealed record TavilyResult(
         [property: JsonPropertyName("title")] string? Title,

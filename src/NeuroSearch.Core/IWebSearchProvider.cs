@@ -13,7 +13,8 @@ public sealed record WebSearchHit(
 public sealed record WebSearchProviderResult(
     IReadOnlyList<WebSearchHit> Hits,
     string ProviderName,
-    string Query);
+    string Query,
+    string? ProviderAnswer = null);
 
 /// <summary>
 /// Web search backend. Implementations must NOT spotlight/taint —

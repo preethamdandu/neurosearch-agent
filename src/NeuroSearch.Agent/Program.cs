@@ -327,31 +327,51 @@ class Program
 
         var formatted = WebSearchTaint.FormatAndTaint(session, raw, hopDepth: 0);
 
-        // Provenance must hold on live JSON
+        // Provenance must hold on live JSON — every result is Untrusted + spotlit
         var provenanceHeld =
             session.HasUntrustedInContext &&
             formatted.Contains("<untrusted_web_content", StringComparison.Ordinal) &&
             formatted.Contains(session.SessionDelimiterId, StringComparison.Ordinal) &&
             session.UntrustedOrigins.Any(o => o.Contains(provider.Name, StringComparison.OrdinalIgnoreCase));
 
-        // Result URLs are provider-authorized for scrape, but NOT auto-followed from page text.
-        // Assert allowlist still denies a host that never appeared in user message or provider results.
-        var filter = new InjectionPolicyFilter(session);
-        var hostile = "https://evil-exfil.example/steal";
-        var deniedHostile = !filter.TryAuthorize(
-            "WebScraper", "ScrapeUrlAsync",
-            new Dictionary<string, string?> { ["url"] = hostile }, out _);
+        var rawContentHits = raw.Hits.Count(h => !string.IsNullOrWhiteSpace(h.RawContent));
+        var rawContentInTaint = rawContentHits == 0 ||
+            (formatted.Contains("RawContent:", StringComparison.Ordinal) &&
+             formatted.Contains("<untrusted_web_content", StringComparison.Ordinal));
+        Console.WriteLine($"LIVE_RAWCONTENT_HITS={rawContentHits}");
+        Console.WriteLine($"LIVE_RAWCONTENT_TAINTED={(rawContentInTaint ? "y" : "n")}");
 
+        // Exact-URL auth: provider URL ok; other path on same host DENIED; hostile DENIED
+        var filter = new InjectionPolicyFilter(session);
         var firstUrl = raw.Hits[0].Url;
         var providerUrlOk = session.IsUrlAuthorized(firstUrl);
+        var otherPathDenied = true;
+        if (Uri.TryCreate(firstUrl, UriKind.Absolute, out var firstUri))
+        {
+            var other = $"{firstUri.Scheme}://{firstUri.Host}/neurosearch-other-path-not-authorized";
+            otherPathDenied = !session.IsUrlAuthorized(other);
+        }
+        var deniedHostile = !filter.TryAuthorize(
+            "WebScraper", "ScrapeUrlAsync",
+            new Dictionary<string, string?> { ["url"] = "https://evil-exfil.example/steal" }, out _);
+
+        // Shape inventory from live JSON (redacted — keys only)
+        string? lastJson = provider switch
+        {
+            SerperSearchProvider s => s.LastRawJson,
+            TavilySearchProvider t => t.LastRawJson,
+            _ => null
+        };
+        ReportLiveJsonShape(provider.Name, lastJson);
 
         Console.WriteLine($"LIVE_QUERY={query}");
         Console.WriteLine($"LIVE_RESULT_COUNT={raw.Hits.Count}");
         Console.WriteLine($"LIVE_PROVENANCE_HELD={(provenanceHeld ? "y" : "n")}");
         Console.WriteLine($"LIVE_PROVIDER_URL_AUTHORIZED={(providerUrlOk ? "y" : "n")}");
+        Console.WriteLine($"LIVE_OTHER_PATH_DENIED={(otherPathDenied ? "y" : "n")}");
         Console.WriteLine($"LIVE_HOSTILE_DENIED={(deniedHostile ? "y" : "n")}");
 
-        if (!provenanceHeld || !deniedHostile || !providerUrlOk)
+        if (!provenanceHeld || !deniedHostile || !providerUrlOk || !otherPathDenied || !rawContentInTaint)
         {
             Console.ForegroundColor = ConsoleColor.Red;
             Console.WriteLine("LIVE_SEARCH_FAIL=provenance or allowlist assertion failed (P0 mapping bug)");
@@ -363,6 +383,81 @@ class Program
         Console.ForegroundColor = ConsoleColor.Green;
         Console.WriteLine($"LIVE_SEARCH_PASS provider={provider.Name} results={raw.Hits.Count}");
         Console.ResetColor();
+    }
+
+    /// <summary>Print live JSON key inventory (no content) for fixture reconciliation.</summary>
+    static void ReportLiveJsonShape(string providerName, string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            Console.WriteLine($"LIVE_SHAPE provider={providerName} raw=missing");
+            return;
+        }
+
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            var rootKeys = string.Join(",", doc.RootElement.EnumerateObject().Select(p => p.Name));
+            Console.WriteLine($"LIVE_SHAPE_ROOT_KEYS={rootKeys}");
+
+            System.Text.Json.JsonElement results;
+            if (providerName.Equals("serper", StringComparison.OrdinalIgnoreCase) &&
+                doc.RootElement.TryGetProperty("organic", out results))
+            {
+                // mapped: title, link→Url, snippet; dropped: position, date, sitelinks, attributes, …
+            }
+            else if (providerName.Equals("tavily", StringComparison.OrdinalIgnoreCase) &&
+                     doc.RootElement.TryGetProperty("results", out results))
+            {
+                // mapped: title, url, content→Snippet, raw_content; dropped: score, favicon, …
+            }
+            else
+            {
+                Console.WriteLine("LIVE_SHAPE_RESULT_KEYS=(no results array)");
+                return;
+            }
+
+            if (results.ValueKind == System.Text.Json.JsonValueKind.Array && results.GetArrayLength() > 0)
+            {
+                var itemKeys = string.Join(",", results[0].EnumerateObject().Select(p => p.Name));
+                Console.WriteLine($"LIVE_SHAPE_RESULT0_KEYS={itemKeys}");
+                var dropped = new List<string>();
+                foreach (var p in results[0].EnumerateObject())
+                {
+                    var mapped = providerName.Equals("serper", StringComparison.OrdinalIgnoreCase)
+                        ? p.Name is "title" or "link" or "snippet"
+                        : p.Name is "title" or "url" or "content" or "raw_content";
+                    if (!mapped)
+                        dropped.Add(p.Name);
+                }
+                Console.WriteLine(
+                    dropped.Count == 0
+                        ? "LIVE_SHAPE_DROPPED_FIELDS=(none)"
+                        : $"LIVE_SHAPE_DROPPED_FIELDS={string.Join(",", dropped)}");
+                // Also flag root-level content fields (e.g. Tavily answer)
+                if (providerName.Equals("tavily", StringComparison.OrdinalIgnoreCase))
+                {
+                    var rootContent = new List<string>();
+                    foreach (var p in doc.RootElement.EnumerateObject())
+                    {
+                        if (p.Name is "answer" or "images")
+                            rootContent.Add($"{p.Name}:{(p.Name == "answer" ? "mapped→ProviderAnswer" : "dropped-nontext")}");
+                    }
+                    Console.WriteLine($"LIVE_SHAPE_ROOT_CONTENT={string.Join(",", rootContent)}");
+                }
+                var contentBearing = dropped.Where(d =>
+                    d.Contains("content", StringComparison.OrdinalIgnoreCase) ||
+                    d.Contains("body", StringComparison.OrdinalIgnoreCase) ||
+                    d.Contains("text", StringComparison.OrdinalIgnoreCase) ||
+                    d.Contains("html", StringComparison.OrdinalIgnoreCase)).ToList();
+                if (contentBearing.Count > 0)
+                    Console.WriteLine($"LIVE_SHAPE_CONTENT_DROP_WARNING={string.Join(",", contentBearing)}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"LIVE_SHAPE_PARSE_FAIL={ex.Message}");
+        }
     }
 
     static ChatHistory CreateChatHistory()

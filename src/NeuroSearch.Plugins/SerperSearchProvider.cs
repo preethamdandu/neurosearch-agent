@@ -13,6 +13,9 @@ public sealed class SerperSearchProvider : IWebSearchProvider
 
     public string Name => "serper";
 
+    /// <summary>Last raw JSON body (for live-verify fixture reconciliation). Never log secrets from it.</summary>
+    public string? LastRawJson { get; private set; }
+
     public SerperSearchProvider(HttpClient httpClient, string apiKey)
     {
         _http = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
@@ -34,8 +37,8 @@ public sealed class SerperSearchProvider : IWebSearchProvider
         using var response = await _http.SendAsync(httpRequest, cancellationToken);
         response.EnsureSuccessStatusCode();
 
-        var payload = await response.Content.ReadFromJsonAsync<SerperResponse>(
-            cancellationToken: cancellationToken);
+        LastRawJson = await response.Content.ReadAsStringAsync(cancellationToken);
+        var payload = System.Text.Json.JsonSerializer.Deserialize<SerperResponse>(LastRawJson);
 
         var organic = payload?.Organic ?? Array.Empty<OrganicResult>();
         var hits = organic
