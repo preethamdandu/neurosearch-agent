@@ -22,12 +22,14 @@ public sealed class InjectionPolicy
     public static readonly HashSet<string> AllowedFunctions = new(StringComparer.OrdinalIgnoreCase)
     {
         "WebSearch.SearchAsync",
+        "WebSearch.ResearchDeeperAsync",
         "WebScraper.ScrapeUrlAsync",
         "VectorMemory.SaveToMemoryAsync",
         "VectorMemory.SearchMemoryAsync",
         "VectorMemory.GetMemoryStatsAsync",
         // SK may report plugin-function with hyphen
         "WebSearch-SearchAsync",
+        "WebSearch-ResearchDeeperAsync",
         "WebScraper-ScrapeUrlAsync",
         "VectorMemory-SaveToMemoryAsync",
         "VectorMemory-SearchMemoryAsync",
@@ -88,7 +90,8 @@ public sealed class InjectionPolicy
         //    demoted after the fixture-shaped attacker.* investigation.
         if (IsOutboundNetwork(pluginName, functionName))
         {
-            var url = GetArg(args, "url") ?? GetArg(args, "query") ?? string.Empty;
+            var url = GetArg(args, "url") ?? string.Empty;
+            var query = GetArg(args, "query") ?? GetArg(args, "topic") ?? string.Empty;
             var argBlob = string.Join("&", args.Select(kv => $"{kv.Key}={kv.Value}"));
 
             if (_state.Defenses.Allowlist)
@@ -104,9 +107,20 @@ public sealed class InjectionPolicy
                         "Outbound hosts must appear in the user's request (allowlist / provenance).");
                 }
 
-                // Provenance-based context leak — structural, not fixture-shaped
-                if (_state.LooksLikeContextExfiltration(argBlob) ||
-                    _state.LooksLikeContextExfiltration(url))
+                // Search / ResearchDeeper: query is an exfil sink (canaries, context, high-entropy)
+                if (IsSearch(pluginName, functionName))
+                {
+                    if (_state.LooksLikeSearchQueryExfiltration(query) ||
+                        _state.LooksLikeSearchQueryExfiltration(argBlob))
+                    {
+                        return PolicyDecision.Block(
+                            "exfiltration",
+                            "Blocked outbound search: trusted-context substring or high-entropy " +
+                            "blob in query (search-query exfil / provenance check).");
+                    }
+                }
+                else if (_state.LooksLikeContextExfiltration(argBlob) ||
+                         _state.LooksLikeContextExfiltration(url))
                 {
                     if (_state.Defenses.ExfilCheck)
                         LogExfilShapeAdvisory(url);
@@ -119,7 +133,7 @@ public sealed class InjectionPolicy
 
             // ADVISORY (logged, non-enforcing) — ExfilCheck only toggles this log
             if (_state.Defenses.ExfilCheck)
-                LogExfilShapeAdvisory(url);
+                LogExfilShapeAdvisory(string.IsNullOrEmpty(url) ? query : url);
         }
 
         // Secondary signal (logged only — NEVER the enforcement point)
@@ -176,6 +190,9 @@ public sealed class InjectionPolicy
 
     private static bool IsScraper(string plugin, string fn) =>
         plugin.Equals("WebScraper", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsSearch(string plugin, string fn) =>
+        plugin.Equals("WebSearch", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsOutboundNetwork(string plugin, string fn) =>
         plugin.Equals("WebScraper", StringComparison.OrdinalIgnoreCase) ||

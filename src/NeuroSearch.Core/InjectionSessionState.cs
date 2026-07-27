@@ -15,8 +15,15 @@ public sealed class InjectionSessionState
     private bool _hasUntrustedInContext;
     private readonly List<string> _untrustedOrigins = new();
     private readonly HashSet<string> _userAuthorizedUrls = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>
+    /// URLs returned by a search provider this session. Fetchable via WebScraper.
+    /// MUST NOT be populated from scraped page text — only from IWebSearchProvider results.
+    /// </summary>
+    private readonly HashSet<string> _providerAuthorizedUrls = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _trustedSubstrings = new(StringComparer.Ordinal);
     private readonly ConcurrentQueue<string> _blockLog = new();
+    private int _researchHopDepth;
+    private int _reSearchCountThisSession;
 
     private bool _userRequestedMemorySave;
 
@@ -33,6 +40,19 @@ public sealed class InjectionSessionState
 
     /// <summary>Max automatic tool invocations per process/session.</summary>
     public int MaxToolCallsPerSession { get; init; } = 40;
+
+    /// <summary>Max ResearchDeeper hops per session (re-search multi-hop ceiling).</summary>
+    public int MaxResearchHops { get; init; } = 3;
+
+    public int ResearchHopDepth
+    {
+        get { lock (_gate) return _researchHopDepth; }
+    }
+
+    public int ReSearchCountThisSession
+    {
+        get { lock (_gate) return _reSearchCountThisSession; }
+    }
 
     public InjectionSessionState(SpotlightFormatter? spotlight = null, DefenseSwitches? defenses = null)
     {
@@ -89,6 +109,24 @@ public sealed class InjectionSessionState
             // User text is trusted — keep short substrings for exfil grounding checks
             if (!string.IsNullOrWhiteSpace(userMessage) && userMessage.Length >= 16)
                 _trustedSubstrings.Add(userMessage.Length > 200 ? userMessage[..200] : userMessage);
+            // Also register long tokens (≥24) so planted canaries / secrets in the
+            // user message cannot be smuggled into outbound search queries.
+            RegisterLongTrustedTokens(userMessage);
+        }
+    }
+
+    private void RegisterLongTrustedTokens(string userMessage)
+    {
+        var start = 0;
+        for (var i = 0; i <= userMessage.Length; i++)
+        {
+            var atEnd = i == userMessage.Length;
+            var sep = !atEnd && !char.IsLetterOrDigit(userMessage[i]) && userMessage[i] != '_';
+            if (!atEnd && !sep) continue;
+            var len = i - start;
+            if (len >= 24)
+                _trustedSubstrings.Add(userMessage.Substring(start, len));
+            start = i + 1;
         }
     }
 
@@ -188,6 +226,16 @@ public sealed class InjectionSessionState
                 }
             }
 
+            // Provider-ranked URLs (from IWebSearchProvider) — NOT from scraped HTML
+            if (_providerAuthorizedUrls.Contains(url))
+                return true;
+            foreach (var allowed in _providerAuthorizedUrls)
+            {
+                if (url.StartsWith(allowed, StringComparison.OrdinalIgnoreCase) ||
+                    allowed.StartsWith(url, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+
             return false;
         }
     }
@@ -207,6 +255,48 @@ public sealed class InjectionSessionState
         }
     }
 
+    /// <summary>
+    /// Record URLs returned by a search provider. Explicit boundary: only call from
+    /// <see cref="WebSearchTaint"/> after a real provider response — never from scraped HTML.
+    /// </summary>
+    public void AuthorizeProviderResultUrls(IEnumerable<string> urls, string providerName)
+    {
+        lock (_gate)
+        {
+            foreach (var url in urls)
+            {
+                if (string.IsNullOrWhiteSpace(url)) continue;
+                if (Uri.TryCreate(url, UriKind.Absolute, out _))
+                    _providerAuthorizedUrls.Add(url.Trim());
+            }
+        }
+    }
+
+    public bool IsProviderAuthorizedUrl(string url)
+    {
+        lock (_gate)
+        {
+            return _providerAuthorizedUrls.Contains(url);
+        }
+    }
+
+    public bool TryBeginResearchHop(out string? reason)
+    {
+        lock (_gate)
+        {
+            if (_reSearchCountThisSession >= MaxResearchHops)
+            {
+                reason = $"Research hop ceiling reached ({MaxResearchHops}). " +
+                         "Ask the user for a specific URL or start a new turn.";
+                return false;
+            }
+            _reSearchCountThisSession++;
+            _researchHopDepth = _reSearchCountThisSession;
+            reason = null;
+            return true;
+        }
+    }
+
     public bool LooksLikeContextExfiltration(string argumentBlob)
     {
         lock (_gate)
@@ -219,7 +309,6 @@ public sealed class InjectionSessionState
             {
                 if (trusted.Length < 24)
                     continue;
-                // User messages often contain the authorized URL itself — that is NOT exfil
                 if (trusted.Contains("http://", StringComparison.OrdinalIgnoreCase) ||
                     trusted.Contains("https://", StringComparison.OrdinalIgnoreCase))
                     continue;
@@ -227,10 +316,57 @@ public sealed class InjectionSessionState
                     return true;
             }
 
-            // High-entropy query alone is common (JWT, UTM, signed CDN) — not sufficient.
-            // Only treat as exfil when the blob also embeds a sensitive context marker.
+            // High-entropy alone is NOT sufficient for URL scrapes (JWTs, UTMs).
+            // Search-query exfil uses LooksLikeSearchQueryExfiltration instead.
             return false;
         }
+    }
+
+    /// <summary>
+    /// Exfil check for outbound SEARCH queries (new sink). Attacker-controlled page
+    /// text must not smuggle context / canaries / high-entropy blobs into provider APIs.
+    /// </summary>
+    public bool LooksLikeSearchQueryExfiltration(string query)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+            return false;
+        if (LooksLikeContextExfiltration(query))
+            return true;
+        return ContainsLongHighEntropyToken(query);
+    }
+
+    /// <summary>
+    /// Detect long base64-ish tokens that look like smuggled context in a search query.
+    /// Structural (length + alphabet), not fixture-string matching.
+    /// </summary>
+    public static bool ContainsLongHighEntropyToken(string s)
+    {
+        if (string.IsNullOrEmpty(s) || s.Length < 32)
+            return false;
+
+        // Split on whitespace / punctuation and inspect tokens
+        var start = 0;
+        for (var i = 0; i <= s.Length; i++)
+        {
+            var atEnd = i == s.Length;
+            var sep = !atEnd && !(char.IsLetterOrDigit(s[i]) || s[i] is '+' or '/' or '=' or '-' or '_');
+            if (!atEnd && !sep) continue;
+            var len = i - start;
+            if (len >= 32)
+            {
+                var token = s.AsSpan(start, len);
+                var b64 = 0;
+                foreach (var c in token)
+                {
+                    if (char.IsLetterOrDigit(c) || c is '+' or '/' or '=' or '-' or '_')
+                        b64++;
+                }
+                if (b64 >= len * 0.95)
+                    return true;
+            }
+            start = i + 1;
+        }
+        return false;
     }
 
     public void LogBlock(string line)

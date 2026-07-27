@@ -9,8 +9,8 @@ using Xunit;
 namespace NeuroSearch.Tests;
 
 /// <summary>
-/// Documents the deliberate capability cost of the host allowlist:
-/// the agent cannot follow links discovered inside scraped content.
+/// Host allowlist blocks following URLs discovered inside scraped content.
+/// Multi-hop is supported via WebSearch.ResearchDeeperAsync (re-search), not link-following.
 /// </summary>
 public class MultiHopCapabilityTests
 {
@@ -45,7 +45,6 @@ public class MultiHopCapabilityTests
         var scraper = new WebScraperPlugin(
             new HttpClient(new StubHandler(PageWithOutboundCitation())), session);
 
-        // User only authorized the review page — not the cited arXiv URL
         session.BeginUserTurn($"summarize {PageUrl}");
 
         Assert.True(filter.TryAuthorize(
@@ -54,9 +53,8 @@ public class MultiHopCapabilityTests
 
         var scraped = await scraper.ScrapeUrlAsync(PageUrl);
         Assert.Contains("attention mechanisms", scraped);
-        Assert.Contains(CitedUrl, scraped); // link is visible in extracted text
+        Assert.Contains(CitedUrl, scraped);
 
-        // Agent attempts multi-hop: follow the citation discovered in content
         Assert.False(filter.TryAuthorize(
             "WebScraper", "ScrapeUrlAsync",
             new Dictionary<string, string?> { ["url"] = CitedUrl },
@@ -69,8 +67,6 @@ public class MultiHopCapabilityTests
     [Fact]
     public void EscapeHatch_User_Explicitly_Supplies_Second_Url_Allows_Follow()
     {
-        // Escape hatch: user must paste the second URL into their message.
-        // There is no confirm-dialog API — explicit supply IS the hatch.
         var session = new InjectionSessionState();
         var filter = new InjectionPolicyFilter(session);
 
@@ -79,7 +75,6 @@ public class MultiHopCapabilityTests
             "WebScraper", "ScrapeUrlAsync",
             new Dictionary<string, string?> { ["url"] = CitedUrl }, out _));
 
-        // User explicitly supplies the follow-on URL
         session.BeginUserTurn($"now also fetch and summarize {CitedUrl}");
         Assert.True(filter.TryAuthorize(
             "WebScraper", "ScrapeUrlAsync",
@@ -91,9 +86,8 @@ public class MultiHopCapabilityTests
     [Fact]
     public void EscapeHatch_No_Implicit_Confirm_Api_Exists()
     {
-        // Document: there is no ConfirmFollowUrl / ApproveHost API.
-        // Presence of these names on the public surface would be a regression toward
-        // auto-follow. This test locks the absence.
+        // No ConfirmFollow / ApproveHost that would authorize scraped-page URLs.
+        // Provider-ranked URLs use AuthorizeProviderResultUrls (re-search boundary).
         var types = typeof(InjectionSessionState).Assembly.GetExportedTypes();
         foreach (var t in types)
         {
@@ -104,8 +98,11 @@ public class MultiHopCapabilityTests
                     n.Contains("ConfirmFollow", StringComparison.OrdinalIgnoreCase) ||
                     n.Contains("ApproveHost", StringComparison.OrdinalIgnoreCase) ||
                     n.Contains("AllowDiscoveredUrl", StringComparison.OrdinalIgnoreCase),
-                    $"Unexpected escape-hatch API {t.Name}.{n} — multi-hop must stay user-supplied-URL only");
+                    $"Unexpected scraped-URL escape-hatch API {t.Name}.{n}");
             }
         }
+
+        Assert.NotNull(typeof(InjectionSessionState).GetMethod("AuthorizeProviderResultUrls"));
+        Assert.NotNull(typeof(WebSearchPlugin).GetMethod("ResearchDeeperAsync"));
     }
 }

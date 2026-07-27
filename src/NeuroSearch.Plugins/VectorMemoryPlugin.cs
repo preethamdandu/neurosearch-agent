@@ -80,6 +80,10 @@ public class VectorMemoryPlugin
             var originUrl = _session.HasUntrustedInContext
                 ? (_session.UntrustedOrigins.LastOrDefault() ?? "unknown")
                 : "user";
+            var researchHop = _session.ResearchHopDepth;
+            var originatingQuery = _session.UntrustedOrigins
+                .LastOrDefault(o => o.Contains(":search:", StringComparison.OrdinalIgnoreCase))
+                ?? originUrl;
 
             var point = new PointStruct
             {
@@ -91,17 +95,22 @@ public class VectorMemoryPlugin
                     ["metadata"] = metadata ?? string.Empty,
                     ["created_at"] = DateTime.UtcNow.ToString("O"),
                     ["provenance"] = provenance.ToString().ToLowerInvariant(),
-                    ["origin_url"] = originUrl
+                    ["origin_url"] = originUrl,
+                    ["research_hop"] = researchHop,
+                    ["originating_query"] = originatingQuery
                 }
             };
 
             await _qdrant.UpsertAsync(_collectionName, new[] { point }, cancellationToken: cancellationToken);
 
             Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine($"[MemoryPlugin] Saved id={id} provenance={provenance} origin={originUrl}");
+            Console.WriteLine(
+                $"[MemoryPlugin] Saved id={id} provenance={provenance} origin={originUrl} " +
+                $"research_hop={researchHop}");
             Console.ResetColor();
 
-            return $"Successfully saved to memory. ID: {id}; provenance={provenance.ToString().ToLowerInvariant()}; origin_url={originUrl}";
+            return $"Successfully saved to memory. ID: {id}; provenance={provenance.ToString().ToLowerInvariant()}; " +
+                   $"origin_url={originUrl}; research_hop={researchHop}";
         }
         catch (Exception ex)
         {
