@@ -226,18 +226,41 @@ public sealed class InjectionSessionState
                 }
             }
 
-            // Provider-ranked URLs (from IWebSearchProvider) — NOT from scraped HTML
-            if (_providerAuthorizedUrls.Contains(url))
+            // Provider-ranked URLs (from IWebSearchProvider) — EXACT normalized URL only.
+            // NEVER host-scoped or prefix-matched: authorizing example.com/article must NOT
+            // allow example.com/<exfil-payload> or example.com/other-path.
+            var normalized = NormalizeUrl(url);
+            if (normalized != null && _providerAuthorizedUrls.Contains(normalized))
                 return true;
-            foreach (var allowed in _providerAuthorizedUrls)
-            {
-                if (url.StartsWith(allowed, StringComparison.OrdinalIgnoreCase) ||
-                    allowed.StartsWith(url, StringComparison.OrdinalIgnoreCase))
-                    return true;
-            }
 
             return false;
         }
+    }
+
+    /// <summary>
+    /// Normalize for exact provider-URL comparison: lowercase scheme/host/path,
+    /// strip default ports, strip trailing slash (except root). Query and fragment
+    /// are preserved so variants do not auto-authorize.
+    /// </summary>
+    public static string? NormalizeUrl(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+            return null;
+        if (!Uri.TryCreate(url.Trim(), UriKind.Absolute, out var uri))
+            return null;
+        if (uri.Scheme is not ("http" or "https"))
+            return null;
+
+        var scheme = uri.Scheme.ToLowerInvariant();
+        var host = uri.Host.ToLowerInvariant();
+        var path = uri.AbsolutePath;
+        if (path.Length > 1 && path.EndsWith('/'))
+            path = path.TrimEnd('/');
+        path = path.ToLowerInvariant();
+
+        var port = uri.IsDefaultPort ? "" : $":{uri.Port}";
+        // Query/Fragment kept as-is for exact identity (variants do not auto-authorize)
+        return $"{scheme}://{host}{port}{path}{uri.Query}{uri.Fragment}";
     }
 
     public bool IsTextGroundedInUserMessage(string text)
@@ -256,8 +279,11 @@ public sealed class InjectionSessionState
     }
 
     /// <summary>
-    /// Record URLs returned by a search provider. Explicit boundary: only call from
-    /// <see cref="WebSearchTaint"/> after a real provider response — never from scraped HTML.
+    /// Record URLs returned by a search provider. Exact-URL authorization only
+    /// (normalized). Explicit boundary: only call from <see cref="WebSearchTaint"/>
+    /// after a real provider response — never from scraped HTML.
+    /// Provider authorization clears "unknown host" for that exact URL; it does NOT
+    /// clear context-exfil checks on the URL.
     /// </summary>
     public void AuthorizeProviderResultUrls(IEnumerable<string> urls, string providerName)
     {
@@ -265,9 +291,9 @@ public sealed class InjectionSessionState
         {
             foreach (var url in urls)
             {
-                if (string.IsNullOrWhiteSpace(url)) continue;
-                if (Uri.TryCreate(url, UriKind.Absolute, out _))
-                    _providerAuthorizedUrls.Add(url.Trim());
+                var normalized = NormalizeUrl(url);
+                if (normalized != null)
+                    _providerAuthorizedUrls.Add(normalized);
             }
         }
     }
@@ -276,7 +302,27 @@ public sealed class InjectionSessionState
     {
         lock (_gate)
         {
-            return _providerAuthorizedUrls.Contains(url);
+            var normalized = NormalizeUrl(url);
+            return normalized != null && _providerAuthorizedUrls.Contains(normalized);
+        }
+    }
+
+    /// <summary>Clear session-scoped state (provider allowlist, hops, budgets, taint).</summary>
+    public void ClearSession()
+    {
+        lock (_gate)
+        {
+            _providerAuthorizedUrls.Clear();
+            _userAuthorizedUrls.Clear();
+            _trustedSubstrings.Clear();
+            _untrustedOrigins.Clear();
+            _hasUntrustedInContext = false;
+            _lastUserMessage = null;
+            _toolCallsThisTurn = 0;
+            _toolCallsThisSession = 0;
+            _researchHopDepth = 0;
+            _reSearchCountThisSession = 0;
+            _userRequestedMemorySave = false;
         }
     }
 

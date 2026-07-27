@@ -107,7 +107,8 @@ public sealed class InjectionPolicy
                         "Outbound hosts must appear in the user's request (allowlist / provenance).");
                 }
 
-                // Search / ResearchDeeper: query is an exfil sink (canaries, context, high-entropy)
+                // Provider authorization only clears "unknown host" for that exact URL.
+                // Context-exfil still applies to authorized scrapes (canary/context in path).
                 if (IsSearch(pluginName, functionName))
                 {
                     if (_state.LooksLikeSearchQueryExfiltration(query) ||
