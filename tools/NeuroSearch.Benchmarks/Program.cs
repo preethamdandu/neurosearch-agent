@@ -1,26 +1,22 @@
 using System.Diagnostics;
 using System.Net.Http.Json;
 using System.Text.Json;
+using NeuroSearch.Core;
 using Qdrant.Client;
 using Qdrant.Client.Grpc;
 
 namespace NeuroSearch.Benchmarks;
 
 /// <summary>
-/// Benchmarks Qdrant search (synthetic vectors) and end-to-end RAG latency (real Ollama embeds + Qdrant search).
+/// Benchmarks Qdrant search, E2E RAG latency, and InjectionPolicy filter overhead.
 ///
-/// Synthetic search:
-///   dotnet run -- --count 10000 --queries 200 --dim 768
-///
-/// E2E RAG (embed + search):
-///   dotnet run -- --e2e --queries 200 --dim 768
-///   (collection is seeded with 10K vectors using real embeddings of the query strings; warmup=20)
-///
-/// Both modes print results as KEY=VALUE for easy grep/log.
+///   --count N                  synthetic Qdrant search
+///   --e2e                      real Ollama embed + Qdrant search
+///   --e2e --with-policy        same, plus InjectionPolicy.Evaluate each iter
+///   --policy-overhead          filter-only microbench
 /// </summary>
 class Program
 {
-    // 30 realistic research-style query strings cycled over N iterations
     static readonly string[] QueryStrings =
     [
         "What are the latest advances in transformer neural networks?",
@@ -57,38 +53,69 @@ class Program
 
     static async Task<int> Main(string[] args)
     {
-        bool e2eMode = args.Contains("--e2e");
-
-        if (e2eMode)
+        if (args.Contains("--policy-overhead"))
+            return RunPolicyOverhead(args);
+        if (args.Contains("--e2e"))
             return await RunE2EBenchmark(args);
-        else
-            return await RunSearchBenchmark(args);
+        return await RunSearchBenchmark(args);
     }
 
-    // ──────────────────────────────────────────────────────────────
-    // Synthetic search benchmark (random unit vectors — original)
-    // ──────────────────────────────────────────────────────────────
+    static int RunPolicyOverhead(string[] args)
+    {
+        var queries = GetInt(args, "--queries", 200);
+        var warmup = GetInt(args, "--warmup", 20);
+
+        Console.WriteLine("=== InjectionPolicy Filter Overhead Microbench ===");
+        Console.WriteLine($"Warmup={warmup} Queries={queries}");
+        Console.WriteLine($"UTC={DateTime.UtcNow:O}");
+
+        var session = new InjectionSessionState
+        {
+            MaxToolCallsPerTurn = int.MaxValue,
+            MaxToolCallsPerSession = int.MaxValue
+        };
+        session.BeginUserTurn("summarize https://example.com/article about transformers");
+        var policy = new InjectionPolicy(session);
+        var argsDict = new Dictionary<string, string?> { ["url"] = "https://example.com/article" };
+
+        for (var i = 0; i < warmup; i++)
+            policy.Evaluate("WebScraper", "ScrapeUrlAsync", argsDict);
+
+        var samples = new List<double>(queries);
+        for (var i = 0; i < queries; i++)
+        {
+            var sw = Stopwatch.StartNew();
+            policy.Evaluate("WebScraper", "ScrapeUrlAsync", argsDict);
+            sw.Stop();
+            samples.Add(sw.Elapsed.TotalMilliseconds);
+        }
+
+        samples.Sort();
+        Console.WriteLine("=== POLICY OVERHEAD RESULTS ===");
+        Console.WriteLine($"POLICY_QUERY_COUNT={queries}");
+        PrintPhase("POLICY", samples);
+        Console.WriteLine("=== END ===");
+        return 0;
+    }
+
     static async Task<int> RunSearchBenchmark(string[] args)
     {
-        var count   = GetInt(args, "--count", 10_000);
+        var count = GetInt(args, "--count", 10_000);
         var queries = GetInt(args, "--queries", 200);
-        var dim     = GetInt(args, "--dim", 768);
-        var host    = GetString(args, "--host", "localhost");
-        var port    = GetInt(args, "--port", 6334);
+        var dim = GetInt(args, "--dim", 768);
+        var host = GetString(args, "--host", "localhost");
+        var port = GetInt(args, "--port", 6334);
         var collection = GetString(args, "--collection", "neurosearch-bench");
 
         Console.WriteLine("=== NeuroSearch Qdrant Synthetic Search Benchmark ===");
         Console.WriteLine($"Host={host}:{port} Collection={collection}");
         Console.WriteLine($"Vectors={count} Dim={dim} Queries={queries}");
-        Console.WriteLine($"Machine={Environment.MachineName} OS={Environment.OSVersion}");
         Console.WriteLine($"UTC={DateTime.UtcNow:O}");
-        Console.WriteLine();
 
         var client = new QdrantClient(host, port);
         await EnsureFreshCollectionAsync(client, collection, dim);
 
         var rng = new Random(42);
-        Console.WriteLine($"Upserting {count} synthetic vectors in batches of 256...");
         var upsertSw = Stopwatch.StartNew();
         for (var offset = 0; offset < count; offset += 256)
         {
@@ -105,20 +132,12 @@ class Program
                 };
             }
             await client.UpsertAsync(collection, points);
-            if ((offset / 256) % 10 == 0)
-                Console.WriteLine($"  upserted {offset + batchSize}/{count}");
         }
         upsertSw.Stop();
-        Console.WriteLine($"Upsert complete in {upsertSw.Elapsed.TotalSeconds:F2}s");
 
-        var info = await client.GetCollectionInfoAsync(collection);
-        Console.WriteLine($"Collection points={info.PointsCount} status={info.Status}");
-
-        Console.WriteLine("Warmup (20 searches)...");
         for (var i = 0; i < 20; i++)
             await client.SearchAsync(collection, RandomUnitVector(rng, dim), limit: 5);
 
-        Console.WriteLine($"Measuring {queries} searches...");
         var latenciesMs = new List<double>(queries);
         for (var i = 0; i < queries; i++)
         {
@@ -133,35 +152,42 @@ class Program
         return 0;
     }
 
-    // ──────────────────────────────────────────────────────────────
-    // E2E RAG benchmark: real Ollama embeddings + Qdrant search
-    // ──────────────────────────────────────────────────────────────
     static async Task<int> RunE2EBenchmark(string[] args)
     {
-        var queries     = GetInt(args, "--queries", 200);
-        var warmup      = GetInt(args, "--warmup", 20);
-        var dim         = GetInt(args, "--dim", 768);
-        var host        = GetString(args, "--host", "localhost");
-        var port        = GetInt(args, "--port", 6334);
-        var ollamaUrl   = GetString(args, "--ollama", "http://localhost:11434");
-        var model       = GetString(args, "--model", "nomic-embed-text");
-        var collection  = GetString(args, "--collection", "neurosearch-e2e-bench");
-        var seedCount   = GetInt(args, "--seed-count", 500);
+        var queries = GetInt(args, "--queries", 200);
+        var warmup = GetInt(args, "--warmup", 20);
+        var dim = GetInt(args, "--dim", 768);
+        var host = GetString(args, "--host", "localhost");
+        var port = GetInt(args, "--port", 6334);
+        var ollamaUrl = GetString(args, "--ollama", "http://localhost:11434");
+        var model = GetString(args, "--model", "nomic-embed-text");
+        var collection = GetString(args, "--collection", "neurosearch-e2e-bench");
+        var seedCount = GetInt(args, "--seed-count", 500);
+        var withPolicy = args.Contains("--with-policy");
 
         Console.WriteLine("=== NeuroSearch E2E RAG Latency Benchmark ===");
-        Console.WriteLine($"Mode=embed+search (real Ollama embeddings)");
+        Console.WriteLine($"WithPolicy={withPolicy}");
         Console.WriteLine($"OllamaEndpoint={ollamaUrl} EmbedModel={model}");
-        Console.WriteLine($"Qdrant={host}:{port} Collection={collection}");
         Console.WriteLine($"SeedVectors={seedCount} Warmup={warmup} Queries={queries}");
-        Console.WriteLine($"Machine={Environment.MachineName} OS={Environment.OSVersion}");
         Console.WriteLine($"UTC={DateTime.UtcNow:O}");
-        Console.WriteLine();
 
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
         var client = new QdrantClient(host, port);
 
-        // Verify Ollama is reachable and model is loaded
-        Console.WriteLine("Checking Ollama connectivity...");
+        InjectionPolicy? policy = null;
+        Dictionary<string, string?>? policyArgs = null;
+        if (withPolicy)
+        {
+            var session = new InjectionSessionState
+            {
+                MaxToolCallsPerTurn = int.MaxValue,
+                MaxToolCallsPerSession = int.MaxValue
+            };
+            session.BeginUserTurn("research https://example.com/doc");
+            policy = new InjectionPolicy(session);
+            policyArgs = new Dictionary<string, string?> { ["url"] = "https://example.com/doc" };
+        }
+
         try
         {
             var testVec = await EmbedAsync(http, ollamaUrl, model, "connectivity check");
@@ -169,52 +195,44 @@ class Program
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"BLOCKER: Ollama unreachable or model not loaded: {ex.Message}");
-            Console.WriteLine("E2E_BENCHMARK_RESULT=BLOCKED");
+            Console.WriteLine($"BLOCKER: {ex.Message}");
             return 1;
         }
 
-        // Seed collection with real embeddings of query strings
-        Console.WriteLine($"Seeding collection with {seedCount} real-embedded docs...");
         await EnsureFreshCollectionAsync(client, collection, dim);
         var upsertSw = Stopwatch.StartNew();
         for (var i = 0; i < seedCount; i++)
         {
             var text = QueryStrings[i % QueryStrings.Length] + $" (doc-{i})";
             var vec = await EmbedAsync(http, ollamaUrl, model, text);
-            var point = new PointStruct
+            await client.UpsertAsync(collection, new[]
             {
-                Id = (ulong)(i + 1),
-                Vectors = vec,
-                Payload = { ["text"] = text }
-            };
-            await client.UpsertAsync(collection, new[] { point });
-            if (i % 50 == 0) Console.WriteLine($"  seeded {i}/{seedCount}");
+                new PointStruct { Id = (ulong)(i + 1), Vectors = vec, Payload = { ["text"] = text } }
+            });
         }
         upsertSw.Stop();
-        Console.WriteLine($"Seed upsert complete in {upsertSw.Elapsed.TotalSeconds:F2}s");
 
-        var info = await client.GetCollectionInfoAsync(collection);
-        Console.WriteLine($"Collection points={info.PointsCount} status={info.Status}");
+        var embedMs = new List<double>(queries);
+        var searchMs = new List<double>(queries);
+        var e2eMs = new List<double>(queries);
+        var policyMs = new List<double>(queries);
 
-        // Lists to record each phase latency
-        var embedMs  = new List<double>(queries + warmup);
-        var searchMs = new List<double>(queries + warmup);
-        var e2eMs    = new List<double>(queries + warmup);
-
-        int totalRuns = warmup + queries;
-        Console.WriteLine($"Running {warmup} warmup + {queries} measured iterations...");
-
-        for (var i = 0; i < totalRuns; i++)
+        for (var i = 0; i < warmup + queries; i++)
         {
             var queryText = QueryStrings[i % QueryStrings.Length];
+            double policyElapsed = 0;
+            if (policy != null && policyArgs != null)
+            {
+                var pSw = Stopwatch.StartNew();
+                policy.Evaluate("WebScraper", "ScrapeUrlAsync", policyArgs);
+                pSw.Stop();
+                policyElapsed = pSw.Elapsed.TotalMilliseconds;
+            }
 
-            // Measure embed
             var embedSw = Stopwatch.StartNew();
             var vec = await EmbedAsync(http, ollamaUrl, model, queryText);
             embedSw.Stop();
 
-            // Measure search
             var searchSw = Stopwatch.StartNew();
             await client.SearchAsync(collection, vec, limit: 5);
             searchSw.Stop();
@@ -223,35 +241,23 @@ class Program
             {
                 embedMs.Add(embedSw.Elapsed.TotalMilliseconds);
                 searchMs.Add(searchSw.Elapsed.TotalMilliseconds);
-                e2eMs.Add(embedSw.Elapsed.TotalMilliseconds + searchSw.Elapsed.TotalMilliseconds);
+                e2eMs.Add(policyElapsed + embedSw.Elapsed.TotalMilliseconds + searchSw.Elapsed.TotalMilliseconds);
+                if (withPolicy) policyMs.Add(policyElapsed);
             }
-
-            if (i < warmup && i % 5 == 0)
-                Console.WriteLine($"  warmup {i}/{warmup}");
-            else if (i == warmup)
-                Console.WriteLine($"  warmup complete, measuring...");
         }
 
-        // Sort and compute stats
-        embedMs.Sort();
-        searchMs.Sort();
-        e2eMs.Sort();
+        embedMs.Sort(); searchMs.Sort(); e2eMs.Sort(); policyMs.Sort();
 
-        Console.WriteLine();
         Console.WriteLine("=== E2E RAG RESULTS ===");
-        Console.WriteLine($"E2E_MODE=embed+search");
+        Console.WriteLine($"E2E_WITH_POLICY={withPolicy}");
         Console.WriteLine($"E2E_OLLAMA_MODEL={model}");
-        Console.WriteLine($"E2E_MODEL_STATE=warm (pre-checked above)");
         Console.WriteLine($"E2E_QUERY_COUNT={queries}");
-        Console.WriteLine($"E2E_WARMUP_EXCLUDED={warmup}");
-        Console.WriteLine($"E2E_SEED_VECTORS={seedCount}");
         Console.WriteLine($"SEED_UPSERT_SECONDS={upsertSw.Elapsed.TotalSeconds:F2}");
-        Console.WriteLine();
         PrintPhase("EMBED", embedMs);
-        Console.WriteLine();
         PrintPhase("SEARCH", searchMs);
-        Console.WriteLine();
         PrintPhase("E2E", e2eMs);
+        if (withPolicy && policyMs.Count > 0)
+            PrintPhase("POLICY", policyMs);
         Console.WriteLine("=== END ===");
         return 0;
     }
@@ -284,13 +290,8 @@ class Program
     static async Task EnsureFreshCollectionAsync(QdrantClient client, string collection, int dim)
     {
         if (await client.CollectionExistsAsync(collection))
-        {
-            Console.WriteLine($"Deleting existing collection '{collection}'...");
             await client.DeleteCollectionAsync(collection);
-        }
-        Console.WriteLine($"Creating collection (Cosine, HNSW defaults, dim={dim})...");
-        await client.CreateCollectionAsync(
-            collection,
+        await client.CreateCollectionAsync(collection,
             new VectorParams { Size = (ulong)dim, Distance = Distance.Cosine, OnDisk = false });
     }
 
@@ -299,14 +300,10 @@ class Program
         using var response = await http.PostAsJsonAsync(
             $"{ollamaUrl.TrimEnd('/')}/api/embeddings",
             new { model, prompt = text });
-
         response.EnsureSuccessStatusCode();
         await using var stream = await response.Content.ReadAsStreamAsync();
         using var doc = await JsonDocument.ParseAsync(stream);
-
-        if (!doc.RootElement.TryGetProperty("embedding", out var embEl))
-            throw new InvalidOperationException("Ollama response missing 'embedding' field");
-
+        var embEl = doc.RootElement.GetProperty("embedding");
         var v = new float[embEl.GetArrayLength()];
         var idx = 0;
         foreach (var el in embEl.EnumerateArray())

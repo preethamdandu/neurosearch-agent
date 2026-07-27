@@ -72,25 +72,30 @@ G. Semantic Kernel upgraded to 1.78.0 (session 2)
 Command:
   dotnet test tests/NeuroSearch.Tests/NeuroSearch.Tests.csproj -c Release
 
-Result (confirmed in both session 1 and session 2):
-  Passed: 43
+Result (confirmed after LLM01 content-boundary work, 2026-07-27):
+  Passed: 56   (43 SecurityTests + 13 PromptInjectionTests)
   Failed: 0
   Duration: ~1s
 
-Security behaviors asserted:
+Security behaviors asserted (input boundary — SecurityTests):
   - Input sanitization (null bytes, HTML injection, SQL injection patterns)
   - SSRF URL blocking (private IP ranges, localhost, metadata endpoints)
   - Rate limiter (token bucket algorithm) — allows burst, throttles sustained load
   - Query length limits, special character stripping
 
+Content-boundary behaviors asserted (PromptInjectionTests — see §11):
+  - Spotlighting, delimiter smuggling, tainted-sink, exfil, budget, provenance
+
 Honest wording for LinkedIn/resume:
-  "43 automated security unit tests for input validation (SQL injection, XSS,
-   SSRF URL blocking) and token-bucket rate limiting — all passing."
+  "56 automated security unit tests: 43 for input validation (SQL injection, XSS,
+   SSRF, rate limiting) plus 13 for OWASP LLM01 indirect prompt-injection
+   defenses (spotlighting, tool-call policy, provenance) — all passing."
 
 DO NOT say:
   - "Zero vulnerabilities found" as a security audit conclusion
+  - "Injection-proof" or "prompt-injection immune"
   - Previously: SK 1.32.0 had GHSA-2ww3-72rp-wpp4. Now cleared (SK 1.78.0).
-  - Unit tests passing ≠ penetration test passed
+  - Unit tests passing ≠ penetration test / red-team passed
 
 
 ================================================================================
@@ -376,18 +381,19 @@ Title:
 
 Description:
   Autonomous AI research agent in C#/.NET 10 using Microsoft Semantic Kernel
-  with auto function calling (WebSearch, WebScraper, VectorMemory plugins), 43
-  security unit tests (OWASP-oriented: SQL injection, XSS, SSRF, rate limiting),
-  local Ollama inference, and Qdrant vector memory. Benchmarked: Qdrant cosine
-  search p95 0.93 ms (10K) / 5.3 ms (100K vectors); end-to-end RAG p95 ≈ 23 ms
-  (embed + search, warm model). Native AOT publish: startup 48 ms vs 99 ms JIT
-  (~52% faster), peak RSS 24 MB vs 64 MB (~62% less). Containerised with a
-  multi-stage Dockerfile: 51.2 MB image, STARTUP_MS=23 in container.
-  Audit-as-error build gate: no moderate+ NuGet advisory tolerated.
+  with auto function calling (WebSearch, WebScraper, VectorMemory plugins),
+  56 security unit tests (43 input-boundary + 13 OWASP LLM01 content-boundary:
+  spotlighting, tool-call policy filter, provenance tagging), local Ollama
+  inference, and Qdrant vector memory. Benchmarked: Qdrant cosine search
+  p95 0.93 ms (10K) / 5.3 ms (100K); end-to-end RAG p95 ≈ 23–27 ms
+  (embed + search, warm model). InjectionPolicy filter overhead p95 ≈ 0.04 ms
+  (negligible vs embed). Native AOT: startup 48 ms vs 99 ms JIT (~52% faster),
+  peak RSS 24 MB vs 64 MB (~62% less). Containerised: ~51 MB image, READY in
+  container. Audit-as-error NuGet gate. Defense-in-depth — not injection-proof.
 
 Skills:
   C#, .NET 10, Microsoft Semantic Kernel, Qdrant, Docker, Native AOT,
-  Ollama, Vector Databases, RAG, OWASP Security
+  Ollama, Vector Databases, RAG, OWASP Security, LLM01 Prompt Injection Defense
 
 
 ================================================================================
@@ -398,7 +404,7 @@ Skills:
 docker compose up -d
 # Ensure: ollama serve && ollama pull nomic-embed-text && ollama pull qwen3.5:9b
 
-# Security tests (43/43 expected)
+# Security tests (56/56 expected: 43 SecurityTests + 13 PromptInjectionTests)
 dotnet test tests/NeuroSearch.Tests/NeuroSearch.Tests.csproj -c Release
 
 # Qdrant latency — synthetic @ 10K
@@ -409,6 +415,12 @@ dotnet run --project tools/NeuroSearch.Benchmarks -c Release -- --count 100000 -
 
 # E2E RAG latency (real embeds + search)
 dotnet run --project tools/NeuroSearch.Benchmarks -c Release -- --e2e --queries 200 --warmup 20 --seed-count 500 --dim 768 --model nomic-embed-text
+
+# E2E with InjectionPolicy filter enabled
+dotnet run --project tools/NeuroSearch.Benchmarks -c Release -- --e2e --with-policy --queries 200 --warmup 20 --seed-count 500
+
+# Policy filter microbench only
+dotnet run --project tools/NeuroSearch.Benchmarks -c Release -- --policy-overhead --queries 200 --warmup 20
 
 # Cold start / memory JIT vs AOT (macOS)
 bash scripts/measure-cold-start.sh
@@ -425,19 +437,22 @@ dotnet run --project src/NeuroSearch.Agent -c Release
 9) CLAIM CHECKLIST (use before posting to LinkedIn / resume)
 ================================================================================
 
-[x] 43/43 security unit tests pass                         MEASURED
+[x] 56/56 unit tests pass (43 Security + 13 PromptInjection)  MEASURED
 [x] VectorMemory wired to Qdrant + Ollama embeddings       DONE
 [x] Qdrant p95 @ 10K vectors                               MEASURED (0.93 ms)
 [x] Qdrant p95 @ 100K vectors                              MEASURED (5.3 ms)
-[x] E2E embed+search RAG latency (p50/p95/p99)             MEASURED (20.7 / 22.9 / 23.9 ms)
+[x] E2E embed+search RAG latency (p50/p95/p99)             MEASURED (see §4)
 [x] Native AOT publish runs to READY                       MEASURED
 [x] AOT vs JIT startup + RSS (macOS arm64)                 MEASURED (48 vs 99 ms; 24 vs 64 MB)
 [x] Dependency CVE GHSA-2ww3-72rp-wpp4 resolved             FIXED (SK 1.78.0) — see §10
 [x] Audit-as-error NuGet gate (Directory.Build.props)      DONE — build fails on moderate+ advisory
-[x] JIT + AOT chat + tool smoke                            VERIFIED — see §10
-[x] AOT Docker container: image size + startup             MEASURED (51.2 MB, STARTUP_MS=23)
+[x] JIT + AOT chat + tool smoke                            VERIFIED — see §10 / §11
+[x] AOT Docker container: image size + startup             MEASURED (see §6; re-verified §11)
+[x] OWASP LLM01 content-boundary defenses                  DONE — see §11
+[x] InjectionPolicy filter overhead measured               MEASURED — see §11
 [ ] Azure Container Apps live deploy                       NOT done
 [ ] Public blog / peer demo counts                         NOT verified
+[ ] Adversarial red-team by a third party                  NOT done
 
 Nothing in this checklist was invented. All [x] items have a corresponding
 measured command and raw output in sections 2–6 and §10 above.
@@ -492,6 +507,131 @@ Known remaining (honest):
   - AOT publish still emits IL2026/IL3050 trim warnings on Http.Json helpers (runtime OK after roots)
   - WebSearch tool not live-verified without SERPER_API_KEY
   - Azure deployment: not done — Dockerfile containerises, does not deploy
+  - Prompt-injection defenses: see §11 KNOWN BYPASSES — not injection-proof
+
+================================================================================
+11) PROMPT INJECTION DEFENSE (OWASP LLM01) — VERIFIED 2026-07-27
+================================================================================
+
+Threat model:
+  WebScraperPlugin fetches attacker-controlled pages. That text enters chat
+  history of an LLM with auto function calling over WebSearch, WebScraper, and
+  VectorMemory. A hostile page can attempt to:
+    (a) override the system prompt / change the agent's goal
+    (b) call VectorMemory.Save to poison future retrievals
+    (c) exfiltrate context via WebScraper to attacker.com/?data=<secrets>
+    (d) chain: poison memory now, trigger on a later unrelated query
+  The original 43 SecurityTests guard the INPUT boundary only. This section
+  covers the CONTENT boundary (what tools return).
+
+Controls implemented (structural — regex is NOT the enforcement point):
+  1. Provenance: ContentProvenance {Trusted, Untrusted} + TaintedContent.
+     WebScraper/WebSearch return Untrusted. VectorMemory persists
+     provenance=untrusted + origin_url in Qdrant payload; retrieval surfaces it.
+  2. Spotlighting: per-session crypto-random delimiter id
+     (<untrusted_web_content id="{8-byte-hex}">…</untrusted_web_content>).
+     Delimiter smuggling neutralized before wrap. System prompt treats markers
+     as DATA, never instructions / tool authorization.
+  3. Sanitization: strip U+200B–U+200D, U+FEFF, bidi U+202A–U+202E / U+2066–U+2069;
+     NFKC normalize; cap ContentSanitizer.MaxContentLength = 2500 chars.
+  4. InjectionPolicyFilter (IAutoFunctionInvocationFilter):
+       allowlist → budget (8/turn, 40/session) → tainted-sink (block Save unless
+       text grounded in last user message) → exfiltration (unauthorized URL /
+       high-entropy query-string / attacker.* patterns).
+     Secondary phrase-hint logging exists but NEVER enforces.
+  Caps recorded: MaxContentLength=2500; MaxToolCallsPerTurn=8; MaxToolCallsPerSession=40.
+
+Test suite (PromptInjectionTests.cs) — all PASS:
+  1. Direct_Instruction_Override_Is_Spotlighted_As_Untrusted_Data
+  2. Delimiter_Smuggling_Forged_Close_Tag_Is_Neutralized
+  3. Unicode_ZeroWidth_Obfuscation_Is_Stripped
+  4. Encoded_Instruction_Lure_Is_Still_Spotlighted_Untrusted
+  5. Memory_Poisoning_Save_Blocked_When_Untrusted_In_Context
+  6. Exfiltration_Fetch_To_Attacker_QueryString_Is_Blocked
+  7. ToolChain_Localhost_Hits_Ssrf_And_Policy
+  8. Deferred_Trigger_Surfaces_Provenance_Untrusted_On_Retrieval
+  9. Multilingual_Override_Is_Spotlighted_Not_Regex_Shaped
+ 10. Markdown_Image_Exfil_Url_In_Tool_Args_Is_Blocked
+ 11. Tool_Call_Budget_Exhaustion_Blocks_Runaway_Chain
+ 12. Benign_Page_With_Ignore_Previous_Section_Still_Processes  (false-positive guard)
+ 13. Allowlist_Rejects_Unknown_Function  (bonus)
+  Totals: 56/56 (43 SecurityTests + 13 PromptInjectionTests)
+
+Filter overhead (measured this session — not estimated):
+
+  A) Microbench (policy.Evaluate only):
+     Command:
+       dotnet run --project tools/NeuroSearch.Benchmarks -c Release -- \
+         --policy-overhead --queries 200 --warmup 20
+     UTC: 2026-07-27T07:38:39Z
+     POLICY_P50_MS = 0.000
+     POLICY_P95_MS = 0.001
+     POLICY_P99_MS = 0.001
+     POLICY_MAX_MS = 0.002
+
+  B) E2E without policy:
+     Command:
+       dotnet run --project tools/NeuroSearch.Benchmarks -c Release -- \
+         --e2e --queries 200 --warmup 20 --seed-count 500 \
+         --collection neurosearch-e2e-nopolicy
+     E2E_P50_MS = 21.370
+     E2E_P95_MS = 24.846
+
+  C) E2E with policy (--with-policy):
+     Command:
+       dotnet run --project tools/NeuroSearch.Benchmarks -c Release -- \
+         --e2e --with-policy --queries 200 --warmup 20 --seed-count 500 \
+         --collection neurosearch-e2e-policy
+     E2E_P50_MS = 21.598   (Δ +0.228 ms vs no-policy — within Ollama noise)
+     E2E_P95_MS = 26.617   (Δ +1.771 ms vs no-policy — dominated by embed variance)
+     POLICY_P50_MS = 0.012
+     POLICY_P95_MS = 0.041
+     POLICY_P99_MS = 0.051
+
+  Finding: InjectionPolicy.Evaluate adds ≈ 0.01–0.04 ms p50/p95 — negligible
+  versus ~18–24 ms embedding. E2E p95 delta is NOT attributable to the filter;
+  it is Ollama CPU variance (same class of finding as §4 control run).
+
+Post-change smoke / container re-verification:
+  [x] JIT --smoke-test chat → SMOKE_PASS
+  [x] JIT --smoke-test GetMemoryStats → Function VectorMemory-GetMemoryStats succeeded, SMOKE_PASS
+  [x] AOT --smoke-test chat → SMOKE_PASS (STARTUP_MS=63)
+  [x] AOT --smoke-test GetMemoryStats → succeeded, SMOKE_PASS
+  [x] docker build -t neurosearch-agent:aot . → succeeds
+  [x] docker run … --startup-benchmark → STARTUP_MS=49 READY
+      (image size docker images = 51.3 MB after LLM01 rebuild)
+
+Honest wording:
+  "Defense-in-depth against OWASP LLM01 (indirect prompt injection): untrusted
+   web content is spotlighted with per-session random delimiters, tagged in
+   vector memory with provenance=untrusted, and gated by an
+   IAutoFunctionInvocationFilter (allowlist, tainted-sink, exfil, budget).
+   13 injection tests + 43 input-boundary tests = 56/56. Filter overhead
+   p95 ≈ 0.04 ms. Not injection-proof — see KNOWN BYPASSES."
+
+DO NOT say:
+  - "Injection-proof" / "immune to prompt injection"
+  - That a regex blocklist of "ignore previous instructions" is the primary control
+  - That unit tests equal a third-party red team
+
+KNOWN BYPASSES / NOT DEFENDED (mandatory honesty):
+  - Compromised or fine-tuned-hostile model: filter constrains TOOL CALLS only;
+    the model can still lie in natural-language answers about scraped content.
+  - Novel paraphrase / social-engineering that never triggers a blocked tool call
+    (e.g. convincing the user to paste secrets into the next message).
+  - User-authorized harm: if the user explicitly asks to scrape attacker.test
+    or to save a specific string, the policy may ALLOW it (URL in user turn /
+    text grounded in user message). The filter does not second-guess explicit user intent.
+  - Cross-session poisoning: provenance=untrusted memories persist in Qdrant
+    until purged; a later session still retrieves them (flag is surfaced, not deleted).
+  - Encoding channels beyond current checks (homoglyphs that survive NFKC,
+    steganography in images, multi-hop exfil via a user-authorized benign host
+    that redirects).
+  - WebSearch query exfil is weaker than WebScraper URL checks (search queries
+    are not full URL-allowlisted the same way).
+  - No semantic/ML detector for novel injection phrasing — by design; regex is
+    log-only secondary signal.
+  - No third-party adversarial red-team has been run.
 
 ================================================================================
 END OF FILE — prefer this over docs/RESUME_BULLETS.md / INTERVIEW_PREP.md numbers

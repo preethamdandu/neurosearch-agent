@@ -46,8 +46,8 @@ public sealed class InjectionPolicy
         var fq = $"{pluginName}.{functionName}";
         var fqAlt = $"{pluginName}-{functionName}";
 
-        // 1. Allowlist
-        if (!AllowedFunctions.Contains(fq) && !AllowedFunctions.Contains(fqAlt))
+        // 1. Allowlist (accept Foo / FooAsync variants — models often drop the Async suffix)
+        if (!IsAllowlisted(pluginName, functionName))
         {
             return PolicyDecision.Block(
                 "allowlist",
@@ -139,6 +139,24 @@ public sealed class InjectionPolicy
                 break;
             }
         }
+    }
+
+    private static bool IsAllowlisted(string plugin, string function)
+    {
+        var fq = $"{plugin}.{function}";
+        var fqDash = $"{plugin}-{function}";
+        if (AllowedFunctions.Contains(fq) || AllowedFunctions.Contains(fqDash))
+            return true;
+
+        // Models / SK sometimes omit the Async suffix
+        if (!function.EndsWith("Async", StringComparison.OrdinalIgnoreCase))
+        {
+            var withAsync = function + "Async";
+            return AllowedFunctions.Contains($"{plugin}.{withAsync}") ||
+                   AllowedFunctions.Contains($"{plugin}-{withAsync}");
+        }
+
+        return false;
     }
 
     private static bool IsSave(string plugin, string fn) =>
