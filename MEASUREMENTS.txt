@@ -499,6 +499,7 @@ dotnet run --project src/NeuroSearch.Agent -c Release
 [x] Retrieval quality on 100K+paraphrases (HNSW engaged)   MEASURED — see §12
 [x] ExfilCheck demoted; 6 enforcing defenses               MEASURED — see §11
 [x] Container startup 5-run average                        MEASURED — see §6
+[x] Index ef + quantization decision                       MEASURED — see §13
 [ ] Azure Container Apps live deploy                       NOT done
 [ ] Public blog / peer demo counts                         NOT verified
 [ ] Third-party adversarial red-team                       NOT done
@@ -715,6 +716,103 @@ Honest wording:
    MRR@10≈0.92 at ef=128. ef 16→256 leaves recall flat; search p95 ~2.1→4.9 ms."
 
 DO NOT cite the invalidated N=50 exact-search table.
+
+
+================================================================================
+13) RETRIEVAL INDEX CONFIG — ef + quantization (measured 2026-07-27)
+================================================================================
+
+Command:
+  PYTHONUNBUFFERED=1 python3 scripts/index-config-bench.py
+  # plus isolated docker stats / du follow-ups (see raw log)
+
+Collection under test: neurosearch-retrieval-100k (100050 pts, 768-dim)
+Optimizer gate: status=green AND indexed_vectors_count stable before every measure.
+Recall always on the 50 labeled paraphrase pairs (distractors = latency/memory only).
+
+--- exact vs ANN (Phase 0) ---
+  Command: same script, SearchParams exact=true vs hnsw_ef=16
+  IDENTICAL_TOP5 = 50/50
+  ANN recall@5 = 0.9600 ; EXACT recall@5 = 0.9600
+  ANN p95 ≈ 2.7 ms ; EXACT p95 ≈ 5.6 ms
+  Finding: ANN-recall ≈ 1.0 — the index is lossless at this scale; the 0.04
+  miss vs perfect recall is embedding/label quality, not approximation.
+  DECISION: runtime Qdrant:HnswEf = 16 (appsettings.json → VectorMemoryPlugin).
+
+--- baseline float32 @ ef=16 (Phase 1), post-optimizer ---
+  curl collection: points=100050 indexed=100000 status=green
+  quantization_config=null
+  Theoretical float32 vectors: 100000×768×4 ≈ 293 MB
+  Collection dir (du -sh …/neurosearch-retrieval-100k) = 395M
+    Gap vs 293 MB ≈ HNSW graph + payload + segment overhead (~100M)
+  docker stats (SQ/BQ deleted, post-restart, sibling bench collections still present):
+    BASE_ONLY = 488.9 MiB / 7.749 GiB
+  Recall/latency @ ef=16 (50 labeled queries, 5-repeat p95):
+    recall@1=0.8800 recall@5=0.9600 recall@10=0.9800 MRR@10=0.9229
+    p50=1.911 ms  p95=3.001 ms
+
+--- scalar int8 (Phase 2), copy collection neurosearch-retrieval-100k-sq ---
+  quant: scalar { type:int8, quantile:0.99, always_ram:true }
+  originals remained in RAM (vectors.on_disk=false)
+  Collection dir = 514M (LARGER than float32 — quantized codes + originals)
+  docker stats with float32 base still loaded = 783.8 MiB (not an isolated replacement)
+  @ ef=16, same 50 queries:
+    rescore=ON  oversampling=1.0: recall@1/5/10=0.88/0.96/0.98 MRR=0.923 p50=1.52 p95=2.05
+    rescore=OFF oversampling=1.0: recall identical; p50=1.44 p95=1.86
+    rescore=ON  oversampling=2.0: recall identical; p50=1.54 p95=2.54
+  Extra probe: scalar + originals on_disk=true (neurosearch-retrieval-100k-sq-ondisk):
+    collection dir=458M; process RSS with float32 base removed = 634 MiB
+      (still above float32 BASE_ONLY 488.9 MiB on this machine)
+    recall@1=0.8600 @5=0.9400 @10=0.9800 MRR@10=0.9049 p50=1.26 p95=2.00
+    → slight recall@5 regression vs float32; no process-RSS win.
+
+--- binary (Phase 3), collection neurosearch-retrieval-100k-bq ---
+  quant: binary { always_ram:true }, search rescore=true oversampling=2.0
+  Collection dir = 450M
+  docker stats (co-resident with other collections during first run) = 1.235 GiB
+  recall@1/5/10=0.88/0.96/0.98 MRR=0.923 p50=1.44 p95=2.07
+  On THIS easy eval BQ matched float32 recall — but 768-dim nomic is thin for BQ
+  in general; not selected as default.
+
+Comparison (same labels/queries; Storage = collection directory du;
+Qdrant RAM = docker stats — process-level, sibling collections present — see notes):
+
+  | Config | Qdrant RAM | Storage | recall@1 | recall@5 | MRR@10 | p50 ms | p95 ms |
+  |---|---|---|---|---|---|---|---|
+  | float32 baseline (ef=16) | 488.9 MiB | 395M | 0.880 | 0.960 | 0.923 | 1.91 | 3.00 |
+  | scalar int8 + rescore | 783.8 MiB† | 514M | 0.880 | 0.960 | 0.923 | 1.52 | 2.05 |
+  | binary + rescore ×2 | 1.235 GiB† | 450M | 0.880 | 0.960 | 0.923 | 1.44 | 2.07 |
+
+  † RAM while the quant collection was co-resident with the float32 original
+    (and other bench collections). Not a clean one-collection replacement RSS.
+    Isolated SQ-ondisk-only process was still 634 MiB > float32 BASE_ONLY.
+
+CHOSEN DEFAULT (applied in appsettings + VectorMemory CreateCollection/Search):
+  HnswEf = 16
+  Quantization = none (float32)
+  Justification: ef=16 is lossless vs exact here and cuts search p95 vs ef=256;
+  Ollama (~18 ms embed) already dominates search (~2–3 ms), so the live lever
+  was ef. Measured scalar/binary setups did not reduce process RSS while keeping
+  originals available for rescoring, and SQ-ondisk slightly lowered recall@5 —
+  so quantization is not the default on this machine.
+
+Agent wiring:
+  appsettings.json → Qdrant:HnswEf, Qdrant:Quantization
+  VectorMemoryPlugin passes HnswEf / QuantizationSearchParams on every search;
+  CreateCollectionAsync applies QuantizationConfig when Quantization ≠ none.
+
+Honest wording:
+  "Set search hnsw_ef=16 after verifying ANN top-5 matched exact on 50/50 queries.
+   Tried scalar int8 and binary quantization; neither earned the default — float32
+   stayed smaller in process RSS, and SQ with on-disk originals dipped recall@5
+   to 0.94. Keep Quantization=none unless a later corpus shows a clear RAM win."
+
+DO NOT say:
+  - These numbers are for 768-dim nomic-embed-text over 50 real labeled pairs among
+    near-orthogonal synthetic distractors — recall on a harder, real-document
+    corpus will be lower.
+  - That quantization "always" saves RAM when originals stay in memory for rescoring
+  - That docker stats with multiple collections loaded is a per-index RSS figure
 
 
 ================================================================================
