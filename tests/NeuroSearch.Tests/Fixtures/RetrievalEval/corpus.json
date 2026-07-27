@@ -1,0 +1,257 @@
+{
+  "docs": [
+    {
+      "id": "d01",
+      "title": "Attention Is All You Need",
+      "text": "The Transformer replaces recurrence with multi-head self-attention, enabling greater parallelization and state-of-the-art machine translation quality with less training time."
+    },
+    {
+      "id": "d02",
+      "title": "BERT: Pre-training of Deep Bidirectional Transformers",
+      "text": "BERT pre-trains deep bidirectional representations from unlabeled text by jointly conditioning on both left and right context, then fine-tunes with just one additional output layer."
+    },
+    {
+      "id": "d03",
+      "title": "GPT-3: Language Models are Few-Shot Learners",
+      "text": "GPT-3 shows that scaling autoregressive language models to 175 billion parameters yields strong few-shot performance across many NLP tasks without gradient updates."
+    },
+    {
+      "id": "d04",
+      "title": "Retrieval-Augmented Generation for Knowledge-Intensive NLP",
+      "text": "RAG combines a pre-trained parametric seq2seq model with a non-parametric dense vector index of Wikipedia, improving factuality on knowledge-intensive generation."
+    },
+    {
+      "id": "d05",
+      "title": "HNSW: Efficient and Robust Approximate Nearest Neighbor Search",
+      "text": "Hierarchical Navigable Small World graphs provide logarithmic complexity approximate nearest neighbor search with high recall, widely used in vector databases."
+    },
+    {
+      "id": "d06",
+      "title": "FAISS: A Library for Efficient Similarity Search",
+      "text": "FAISS implements product quantization and IVF indexes for billion-scale similarity search of dense vectors on CPU and GPU."
+    },
+    {
+      "id": "d07",
+      "title": "Dense Passage Retrieval for Open-Domain Question Answering",
+      "text": "DPR dual-encoders learn dense representations of questions and passages, outperforming BM25 on open-domain QA retrieval."
+    },
+    {
+      "id": "d08",
+      "title": "ColBERT: Efficient and Effective Passage Search via Late Interaction",
+      "text": "ColBERT encodes queries and documents at token level and uses late interaction MaxSim scoring, balancing effectiveness with efficiency."
+    },
+    {
+      "id": "d09",
+      "title": "BM25: A Probabilistic Ranking Function",
+      "text": "BM25 ranks documents by term frequency saturation and inverse document frequency with document-length normalization, a classic sparse retrieval baseline."
+    },
+    {
+      "id": "d10",
+      "title": "Word2Vec: Efficient Estimation of Word Representations",
+      "text": "Word2Vec learns distributed word vectors using continuous bag-of-words and skip-gram architectures trainable on large corpora."
+    },
+    {
+      "id": "d11",
+      "title": "GloVe: Global Vectors for Word Representation",
+      "text": "GloVe trains word embeddings by factorizing a global word-word co-occurrence matrix, combining global statistics with local context windows."
+    },
+    {
+      "id": "d12",
+      "title": "ELMo: Deep Contextualized Word Representations",
+      "text": "ELMo derives contextualized word vectors from bidirectional language model hidden states, improving many NLP benchmarks."
+    },
+    {
+      "id": "d13",
+      "title": "RoBERTa: A Robustly Optimized BERT Pretraining Approach",
+      "text": "RoBERTa removes next-sentence prediction, trains longer with larger batches and more data, improving BERT downstream accuracy."
+    },
+    {
+      "id": "d14",
+      "title": "T5: Exploring the Limits of Transfer Learning",
+      "text": "T5 frames every NLP problem as text-to-text, unifying classification, translation, and summarization under one encoder-decoder."
+    },
+    {
+      "id": "d15",
+      "title": "LoRA: Low-Rank Adaptation of Large Language Models",
+      "text": "LoRA freezes pretrained weights and injects trainable low-rank matrices into attention layers, reducing fine-tuning cost."
+    },
+    {
+      "id": "d16",
+      "title": "QLoRA: Efficient Finetuning of Quantized LLMs",
+      "text": "QLoRA backpropagates through a frozen 4-bit quantized model into LoRA adapters, enabling fine-tuning of 65B models on a single GPU."
+    },
+    {
+      "id": "d17",
+      "title": "FlashAttention: Fast and Memory-Efficient Exact Attention",
+      "text": "FlashAttention reformulates attention with tiling and IO-awareness to reduce HBM reads/writes, speeding exact attention without approximation."
+    },
+    {
+      "id": "d18",
+      "title": "Grouped-Query Attention",
+      "text": "Grouped-query attention shares key/value heads across query heads, reducing KV-cache size for long-context inference with little quality loss."
+    },
+    {
+      "id": "d19",
+      "title": "Mixture of Experts Models",
+      "text": "Sparse mixture-of-experts routes tokens to specialized expert feed-forward networks, increasing parameter count without proportional compute."
+    },
+    {
+      "id": "d20",
+      "title": "Constitutional AI: Harmlessness from AI Feedback",
+      "text": "Constitutional AI uses a principle set and AI critiques to train helpful and harmless assistants with less human labeling."
+    },
+    {
+      "id": "d21",
+      "title": "RLHF: Training Language Models to Follow Instructions",
+      "text": "Reinforcement learning from human feedback aligns language models to human preferences via a reward model and PPO optimization."
+    },
+    {
+      "id": "d22",
+      "title": "Direct Preference Optimization",
+      "text": "DPO optimizes language models directly on preference pairs without fitting an explicit reward model or running RL."
+    },
+    {
+      "id": "d23",
+      "title": "Chain-of-Thought Prompting Elicits Reasoning",
+      "text": "Chain-of-thought prompting elicits intermediate reasoning steps from large models, improving arithmetic and symbolic reasoning."
+    },
+    {
+      "id": "d24",
+      "title": "ReAct: Synergizing Reasoning and Acting in Language Models",
+      "text": "ReAct interleaves reasoning traces with tool actions, improving grounded decision-making in interactive environments."
+    },
+    {
+      "id": "d25",
+      "title": "Toolformer: Language Models Can Teach Themselves to Use Tools",
+      "text": "Toolformer self-supervises API call insertions so models learn when and how to call calculators, search, and translators."
+    },
+    {
+      "id": "d26",
+      "title": "Semantic Kernel: Orchestrating AI Plugins",
+      "text": "Semantic Kernel is a .NET SDK that composes LLMs with plugins, planners, and memory for building AI agents."
+    },
+    {
+      "id": "d27",
+      "title": "LangChain: Building Applications with LLMs",
+      "text": "LangChain provides abstractions for chains, agents, retrievers, and memory to compose LLM applications."
+    },
+    {
+      "id": "d28",
+      "title": "Qdrant Vector Database Architecture",
+      "text": "Qdrant stores high-dimensional vectors with HNSW indexes, payload filtering, and gRPC/REST APIs for semantic search."
+    },
+    {
+      "id": "d29",
+      "title": "Pinecone Managed Vector Database",
+      "text": "Pinecone offers a managed vector database service with approximate nearest neighbor indexes for production semantic search."
+    },
+    {
+      "id": "d30",
+      "title": "Weaviate Open-Source Vector Search",
+      "text": "Weaviate combines vector search with a GraphQL API and modular vectorizer plugins for hybrid retrieval."
+    },
+    {
+      "id": "d31",
+      "title": "Native AOT Compilation in .NET",
+      "text": "Native AOT compiles .NET apps ahead-of-time to a single native binary, cutting startup time and deployment size."
+    },
+    {
+      "id": "d32",
+      "title": "Docker Multi-Stage Builds",
+      "text": "Multi-stage Docker builds copy artifacts between stages so final images exclude compilers and build tools."
+    },
+    {
+      "id": "d33",
+      "title": "Kubernetes Horizontal Pod Autoscaling",
+      "text": "HPA adjusts replica counts based on CPU, memory, or custom metrics to match demand for containerized workloads."
+    },
+    {
+      "id": "d34",
+      "title": "gRPC vs REST for Microservices",
+      "text": "gRPC uses HTTP/2 and Protocol Buffers for efficient typed RPCs, while REST typically uses JSON over HTTP/1.1."
+    },
+    {
+      "id": "d35",
+      "title": "OWASP Top 10 Web Application Risks",
+      "text": "The OWASP Top 10 catalogs critical web risks including injection, broken auth, SSRF, and security misconfiguration."
+    },
+    {
+      "id": "d36",
+      "title": "Prompt Injection Attacks on LLM Applications",
+      "text": "Prompt injection manipulates model instructions via untrusted content so agents override system goals or exfiltrate data."
+    },
+    {
+      "id": "d37",
+      "title": "SSRF Defense in Web Applications",
+      "text": "Server-side request forgery defenses include URL allowlists, blocking private IP ranges, and disabling redirects."
+    },
+    {
+      "id": "d38",
+      "title": "Cross-Site Scripting Mitigation",
+      "text": "XSS mitigation relies on context-aware output encoding, Content-Security-Policy, and sanitizing untrusted HTML."
+    },
+    {
+      "id": "d39",
+      "title": "Rate Limiting with Token Buckets",
+      "text": "Token-bucket rate limiters refill tokens at a steady rate, allowing short bursts while enforcing average throughput."
+    },
+    {
+      "id": "d40",
+      "title": "Cosine Similarity for Embeddings",
+      "text": "Cosine similarity measures the angle between embedding vectors and is invariant to magnitude, common in semantic search."
+    },
+    {
+      "id": "d41",
+      "title": "Dot Product vs Cosine Similarity",
+      "text": "Dot product equals cosine similarity for unit-normalized vectors; otherwise it conflates direction with magnitude."
+    },
+    {
+      "id": "d42",
+      "title": "Approximate Nearest Neighbor Tradeoffs",
+      "text": "ANN indexes trade exact recall for latency and memory; parameters like HNSW ef_search control the tradeoff."
+    },
+    {
+      "id": "d43",
+      "title": "Mean Reciprocal Rank Evaluation",
+      "text": "MRR averages the reciprocal rank of the first relevant document across queries, emphasizing early precision."
+    },
+    {
+      "id": "d44",
+      "title": "Recall at K for Information Retrieval",
+      "text": "Recall@k is the fraction of queries for which at least one relevant document appears in the top-k results."
+    },
+    {
+      "id": "d45",
+      "title": "nDCG Ranking Metric",
+      "text": "Normalized discounted cumulative gain rewards relevant hits near the top of a ranked list with logarithmic discount."
+    },
+    {
+      "id": "d46",
+      "title": "Ollama Local LLM Inference",
+      "text": "Ollama runs open-weight language and embedding models locally via a simple HTTP API for offline development."
+    },
+    {
+      "id": "d47",
+      "title": "nomic-embed-text Embedding Model",
+      "text": "nomic-embed-text produces 768-dimensional embeddings optimized for retrieval tasks and runs under Ollama."
+    },
+    {
+      "id": "d48",
+      "title": "Vector Quantization for Memory Savings",
+      "text": "Product and scalar quantization compress vectors to reduce index memory with controlled recall degradation."
+    },
+    {
+      "id": "d49",
+      "title": "Hybrid Sparse-Dense Retrieval",
+      "text": "Hybrid retrieval fuses BM25 sparse scores with dense embedding scores to improve robustness across query types."
+    },
+    {
+      "id": "d50",
+      "title": "Evaluation Pitfalls in Embedding Benchmarks",
+      "text": "Circular evaluation that labels relevance from the same embedder under test inflates recall and must be avoided."
+    }
+  ],
+  "labeling_method": "Each document has a unique canonical title and abstract text authored for this fixture. Each query string IS that document's title. The single relevant document is the one that owns the title. Labels were assigned at fixture authoring time from this structural title\u2192doc ownership. Labels were NOT produced by embedding queries with nomic-embed-text or any other model under test.",
+  "n_docs": 50,
+  "n_queries": 50
+}

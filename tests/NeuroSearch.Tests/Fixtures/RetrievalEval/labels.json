@@ -1,0 +1,404 @@
+{
+  "queries": [
+    {
+      "query_id": "q01",
+      "query": "Attention Is All You Need",
+      "relevant_ids": [
+        "d01"
+      ],
+      "label_rule": "title_owns_abstract"
+    },
+    {
+      "query_id": "q02",
+      "query": "BERT: Pre-training of Deep Bidirectional Transformers",
+      "relevant_ids": [
+        "d02"
+      ],
+      "label_rule": "title_owns_abstract"
+    },
+    {
+      "query_id": "q03",
+      "query": "GPT-3: Language Models are Few-Shot Learners",
+      "relevant_ids": [
+        "d03"
+      ],
+      "label_rule": "title_owns_abstract"
+    },
+    {
+      "query_id": "q04",
+      "query": "Retrieval-Augmented Generation for Knowledge-Intensive NLP",
+      "relevant_ids": [
+        "d04"
+      ],
+      "label_rule": "title_owns_abstract"
+    },
+    {
+      "query_id": "q05",
+      "query": "HNSW: Efficient and Robust Approximate Nearest Neighbor Search",
+      "relevant_ids": [
+        "d05"
+      ],
+      "label_rule": "title_owns_abstract"
+    },
+    {
+      "query_id": "q06",
+      "query": "FAISS: A Library for Efficient Similarity Search",
+      "relevant_ids": [
+        "d06"
+      ],
+      "label_rule": "title_owns_abstract"
+    },
+    {
+      "query_id": "q07",
+      "query": "Dense Passage Retrieval for Open-Domain Question Answering",
+      "relevant_ids": [
+        "d07"
+      ],
+      "label_rule": "title_owns_abstract"
+    },
+    {
+      "query_id": "q08",
+      "query": "ColBERT: Efficient and Effective Passage Search via Late Interaction",
+      "relevant_ids": [
+        "d08"
+      ],
+      "label_rule": "title_owns_abstract"
+    },
+    {
+      "query_id": "q09",
+      "query": "BM25: A Probabilistic Ranking Function",
+      "relevant_ids": [
+        "d09"
+      ],
+      "label_rule": "title_owns_abstract"
+    },
+    {
+      "query_id": "q10",
+      "query": "Word2Vec: Efficient Estimation of Word Representations",
+      "relevant_ids": [
+        "d10"
+      ],
+      "label_rule": "title_owns_abstract"
+    },
+    {
+      "query_id": "q11",
+      "query": "GloVe: Global Vectors for Word Representation",
+      "relevant_ids": [
+        "d11"
+      ],
+      "label_rule": "title_owns_abstract"
+    },
+    {
+      "query_id": "q12",
+      "query": "ELMo: Deep Contextualized Word Representations",
+      "relevant_ids": [
+        "d12"
+      ],
+      "label_rule": "title_owns_abstract"
+    },
+    {
+      "query_id": "q13",
+      "query": "RoBERTa: A Robustly Optimized BERT Pretraining Approach",
+      "relevant_ids": [
+        "d13"
+      ],
+      "label_rule": "title_owns_abstract"
+    },
+    {
+      "query_id": "q14",
+      "query": "T5: Exploring the Limits of Transfer Learning",
+      "relevant_ids": [
+        "d14"
+      ],
+      "label_rule": "title_owns_abstract"
+    },
+    {
+      "query_id": "q15",
+      "query": "LoRA: Low-Rank Adaptation of Large Language Models",
+      "relevant_ids": [
+        "d15"
+      ],
+      "label_rule": "title_owns_abstract"
+    },
+    {
+      "query_id": "q16",
+      "query": "QLoRA: Efficient Finetuning of Quantized LLMs",
+      "relevant_ids": [
+        "d16"
+      ],
+      "label_rule": "title_owns_abstract"
+    },
+    {
+      "query_id": "q17",
+      "query": "FlashAttention: Fast and Memory-Efficient Exact Attention",
+      "relevant_ids": [
+        "d17"
+      ],
+      "label_rule": "title_owns_abstract"
+    },
+    {
+      "query_id": "q18",
+      "query": "Grouped-Query Attention",
+      "relevant_ids": [
+        "d18"
+      ],
+      "label_rule": "title_owns_abstract"
+    },
+    {
+      "query_id": "q19",
+      "query": "Mixture of Experts Models",
+      "relevant_ids": [
+        "d19"
+      ],
+      "label_rule": "title_owns_abstract"
+    },
+    {
+      "query_id": "q20",
+      "query": "Constitutional AI: Harmlessness from AI Feedback",
+      "relevant_ids": [
+        "d20"
+      ],
+      "label_rule": "title_owns_abstract"
+    },
+    {
+      "query_id": "q21",
+      "query": "RLHF: Training Language Models to Follow Instructions",
+      "relevant_ids": [
+        "d21"
+      ],
+      "label_rule": "title_owns_abstract"
+    },
+    {
+      "query_id": "q22",
+      "query": "Direct Preference Optimization",
+      "relevant_ids": [
+        "d22"
+      ],
+      "label_rule": "title_owns_abstract"
+    },
+    {
+      "query_id": "q23",
+      "query": "Chain-of-Thought Prompting Elicits Reasoning",
+      "relevant_ids": [
+        "d23"
+      ],
+      "label_rule": "title_owns_abstract"
+    },
+    {
+      "query_id": "q24",
+      "query": "ReAct: Synergizing Reasoning and Acting in Language Models",
+      "relevant_ids": [
+        "d24"
+      ],
+      "label_rule": "title_owns_abstract"
+    },
+    {
+      "query_id": "q25",
+      "query": "Toolformer: Language Models Can Teach Themselves to Use Tools",
+      "relevant_ids": [
+        "d25"
+      ],
+      "label_rule": "title_owns_abstract"
+    },
+    {
+      "query_id": "q26",
+      "query": "Semantic Kernel: Orchestrating AI Plugins",
+      "relevant_ids": [
+        "d26"
+      ],
+      "label_rule": "title_owns_abstract"
+    },
+    {
+      "query_id": "q27",
+      "query": "LangChain: Building Applications with LLMs",
+      "relevant_ids": [
+        "d27"
+      ],
+      "label_rule": "title_owns_abstract"
+    },
+    {
+      "query_id": "q28",
+      "query": "Qdrant Vector Database Architecture",
+      "relevant_ids": [
+        "d28"
+      ],
+      "label_rule": "title_owns_abstract"
+    },
+    {
+      "query_id": "q29",
+      "query": "Pinecone Managed Vector Database",
+      "relevant_ids": [
+        "d29"
+      ],
+      "label_rule": "title_owns_abstract"
+    },
+    {
+      "query_id": "q30",
+      "query": "Weaviate Open-Source Vector Search",
+      "relevant_ids": [
+        "d30"
+      ],
+      "label_rule": "title_owns_abstract"
+    },
+    {
+      "query_id": "q31",
+      "query": "Native AOT Compilation in .NET",
+      "relevant_ids": [
+        "d31"
+      ],
+      "label_rule": "title_owns_abstract"
+    },
+    {
+      "query_id": "q32",
+      "query": "Docker Multi-Stage Builds",
+      "relevant_ids": [
+        "d32"
+      ],
+      "label_rule": "title_owns_abstract"
+    },
+    {
+      "query_id": "q33",
+      "query": "Kubernetes Horizontal Pod Autoscaling",
+      "relevant_ids": [
+        "d33"
+      ],
+      "label_rule": "title_owns_abstract"
+    },
+    {
+      "query_id": "q34",
+      "query": "gRPC vs REST for Microservices",
+      "relevant_ids": [
+        "d34"
+      ],
+      "label_rule": "title_owns_abstract"
+    },
+    {
+      "query_id": "q35",
+      "query": "OWASP Top 10 Web Application Risks",
+      "relevant_ids": [
+        "d35"
+      ],
+      "label_rule": "title_owns_abstract"
+    },
+    {
+      "query_id": "q36",
+      "query": "Prompt Injection Attacks on LLM Applications",
+      "relevant_ids": [
+        "d36"
+      ],
+      "label_rule": "title_owns_abstract"
+    },
+    {
+      "query_id": "q37",
+      "query": "SSRF Defense in Web Applications",
+      "relevant_ids": [
+        "d37"
+      ],
+      "label_rule": "title_owns_abstract"
+    },
+    {
+      "query_id": "q38",
+      "query": "Cross-Site Scripting Mitigation",
+      "relevant_ids": [
+        "d38"
+      ],
+      "label_rule": "title_owns_abstract"
+    },
+    {
+      "query_id": "q39",
+      "query": "Rate Limiting with Token Buckets",
+      "relevant_ids": [
+        "d39"
+      ],
+      "label_rule": "title_owns_abstract"
+    },
+    {
+      "query_id": "q40",
+      "query": "Cosine Similarity for Embeddings",
+      "relevant_ids": [
+        "d40"
+      ],
+      "label_rule": "title_owns_abstract"
+    },
+    {
+      "query_id": "q41",
+      "query": "Dot Product vs Cosine Similarity",
+      "relevant_ids": [
+        "d41"
+      ],
+      "label_rule": "title_owns_abstract"
+    },
+    {
+      "query_id": "q42",
+      "query": "Approximate Nearest Neighbor Tradeoffs",
+      "relevant_ids": [
+        "d42"
+      ],
+      "label_rule": "title_owns_abstract"
+    },
+    {
+      "query_id": "q43",
+      "query": "Mean Reciprocal Rank Evaluation",
+      "relevant_ids": [
+        "d43"
+      ],
+      "label_rule": "title_owns_abstract"
+    },
+    {
+      "query_id": "q44",
+      "query": "Recall at K for Information Retrieval",
+      "relevant_ids": [
+        "d44"
+      ],
+      "label_rule": "title_owns_abstract"
+    },
+    {
+      "query_id": "q45",
+      "query": "nDCG Ranking Metric",
+      "relevant_ids": [
+        "d45"
+      ],
+      "label_rule": "title_owns_abstract"
+    },
+    {
+      "query_id": "q46",
+      "query": "Ollama Local LLM Inference",
+      "relevant_ids": [
+        "d46"
+      ],
+      "label_rule": "title_owns_abstract"
+    },
+    {
+      "query_id": "q47",
+      "query": "nomic-embed-text Embedding Model",
+      "relevant_ids": [
+        "d47"
+      ],
+      "label_rule": "title_owns_abstract"
+    },
+    {
+      "query_id": "q48",
+      "query": "Vector Quantization for Memory Savings",
+      "relevant_ids": [
+        "d48"
+      ],
+      "label_rule": "title_owns_abstract"
+    },
+    {
+      "query_id": "q49",
+      "query": "Hybrid Sparse-Dense Retrieval",
+      "relevant_ids": [
+        "d49"
+      ],
+      "label_rule": "title_owns_abstract"
+    },
+    {
+      "query_id": "q50",
+      "query": "Evaluation Pitfalls in Embedding Benchmarks",
+      "relevant_ids": [
+        "d50"
+      ],
+      "label_rule": "title_owns_abstract"
+    }
+  ]
+}
