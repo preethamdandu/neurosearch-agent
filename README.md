@@ -78,6 +78,7 @@ Source of truth: **[`MEASUREMENTS.txt`](MEASUREMENTS.txt)** (outranks resume/int
 - Spotlighting ASR 12/20 → 1/20 (McNemar p ≈ 0.00098); policy 1 → 0 not significant at n=20  
 - Benign-page exfil heuristic FP **0/40** after narrowing; 65 unauthorized-host blocks are expected  
 - Retrieval on **100K distractors + 50 paraphrased queries** with HNSW engaged (`indexed_vectors_count > 0`): recall@1=0.88, @5=0.96, @10=0.98, MRR@10≈0.92  
+- Index config: **`hnsw_ef=16`** (ANN matched exact top-5 on 50/50); **quantization=none** after scalar/binary did not win on process RSS without recall risk (§13)  
 - Qdrant synthetic search p95 ≈ 0.93 ms @10K / 5.3 ms @100K; E2E embed+search p95 ≈ 23 ms (warm local)  
 - Container image ~51 MB; startup **avg 8.8 ms** over 5 runs  
 
