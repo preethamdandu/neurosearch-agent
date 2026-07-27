@@ -558,22 +558,35 @@ class Program
         var ollamaUrl = GetString(args, "--ollama", "http://localhost:11434");
         var model = GetString(args, "--model", "nomic-embed-text");
         var dim = GetInt(args, "--dim", 768);
-        var collection = GetString(args, "--collection", "neurosearch-retrieval-eval");
+        var collection = GetString(args, "--collection", "neurosearch-retrieval-100k");
+        var distractors = GetInt(args, "--distractors", 100_000);
         var defaultEf = GetInt(args, "--ef", 128);
         var efCurve = GetString(args, "--ef-curve", "16,64,128,256")
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Select(int.Parse).ToArray();
+        var skipSeed = args.Contains("--skip-seed");
 
         var corpusPath = FindRetrievalCorpus();
-        Console.WriteLine("=== Retrieval Quality (real embeddings, independent labels) ===");
+        var paraphrasePath = Path.Combine(Path.GetDirectoryName(corpusPath)!, "paraphrase_queries.json");
+        if (!File.Exists(paraphrasePath))
+        {
+            Console.WriteLine($"NOT MEASURED — missing paraphrase fixtures: {paraphrasePath}");
+            return 1;
+        }
+
+        Console.WriteLine("=== Retrieval Quality (100K distractors + paraphrased queries) ===");
         Console.WriteLine($"Corpus={corpusPath}");
+        Console.WriteLine($"Paraphrases={paraphrasePath}");
         Console.WriteLine($"Ollama={ollamaUrl} Model={model} Dim={dim}");
         Console.WriteLine($"Qdrant={host}:{port} Collection={collection}");
-        Console.WriteLine($"DefaultEf={defaultEf} EfCurve=[{string.Join(",", efCurve)}]");
+        Console.WriteLine($"Distractors={distractors} DefaultEf={defaultEf} EfCurve=[{string.Join(",", efCurve)}]");
         Console.WriteLine($"UTC={DateTime.UtcNow:O}");
 
         using var corpusDoc = JsonDocument.Parse(await File.ReadAllTextAsync(corpusPath));
-        var labeling = corpusDoc.RootElement.GetProperty("labeling_method").GetString() ?? "";
+        using var paraDoc = JsonDocument.Parse(await File.ReadAllTextAsync(paraphrasePath));
+        var rewriteRule = paraDoc.RootElement.GetProperty("rewrite_rule").GetString() ?? "";
+        var labeling = paraDoc.RootElement.GetProperty("labeling_method").GetString() ?? "";
+        Console.WriteLine($"REWRITE_RULE={rewriteRule}");
         Console.WriteLine($"LABELING_METHOD={labeling}");
 
         var docs = new List<(string Id, string Title, string Text)>();
@@ -585,9 +598,14 @@ class Program
                 d.GetProperty("text").GetString()!));
         }
 
-        // Queries: title → owning doc id (from corpus structure; labels.json mirrors this)
-        var queries = docs.Select(d => (Query: d.Title, RelevantId: d.Id)).ToList();
-        Console.WriteLine($"N_DOCS={docs.Count} N_QUERIES={queries.Count}");
+        var queries = new List<(string Query, string RelevantId)>();
+        foreach (var q in paraDoc.RootElement.GetProperty("queries").EnumerateArray())
+        {
+            queries.Add((
+                q.GetProperty("query").GetString()!,
+                q.GetProperty("doc_id").GetString()!));
+        }
+        Console.WriteLine($"N_LABELED={docs.Count} N_QUERIES={queries.Count} N_DISTRACTORS={distractors}");
 
         using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(2) };
         var client = new QdrantClient(host, port);
@@ -603,40 +621,100 @@ class Program
             return 1;
         }
 
-        await EnsureFreshCollectionAsync(client, collection, dim);
-
-        // Upsert: point id = 1..N, payload doc_id + title + text
         var idMap = new Dictionary<string, ulong>();
-        for (var i = 0; i < docs.Count; i++)
+        if (!skipSeed)
         {
-            var (docId, title, text) = docs[i];
-            var pointId = (ulong)(i + 1);
-            idMap[docId] = pointId;
-            var vec = await EmbedAsync(http, ollamaUrl, model, $"{title}. {text}");
-            await client.UpsertAsync(collection, new[]
+            await EnsureFreshCollectionAsync(client, collection, dim);
+
+            // 100K synthetic distractors (same method as §3b) — engage HNSW
+            var rng = new Random(42);
+            Console.WriteLine($"Seeding {distractors} synthetic distractors...");
+            var upsertSw = Stopwatch.StartNew();
+            for (var offset = 0; offset < distractors; offset += 256)
             {
-                new PointStruct
+                var batchSize = Math.Min(256, distractors - offset);
+                var points = new PointStruct[batchSize];
+                for (var i = 0; i < batchSize; i++)
                 {
-                    Id = pointId,
-                    Vectors = vec,
-                    Payload =
+                    var id = (ulong)(offset + i + 1);
+                    points[i] = new PointStruct
                     {
-                        ["doc_id"] = docId,
-                        ["title"] = title,
-                        ["text"] = text
-                    }
+                        Id = id,
+                        Vectors = RandomUnitVector(rng, dim),
+                        Payload = { ["kind"] = "distractor", ["text"] = $"synth-{id}" }
+                    };
                 }
-            });
-            if ((i + 1) % 10 == 0)
-                Console.WriteLine($"Upserted {i + 1}/{docs.Count}");
+                await client.UpsertAsync(collection, points);
+                if ((offset / 256) % 50 == 0)
+                    Console.WriteLine($"  distractors {offset + batchSize}/{distractors}");
+            }
+            upsertSw.Stop();
+            Console.WriteLine($"Distractors upserted in {upsertSw.Elapsed.TotalSeconds:F1}s");
+
+            // 50 labeled docs with REAL embeddings (point ids after distractors)
+            for (var i = 0; i < docs.Count; i++)
+            {
+                var (docId, title, text) = docs[i];
+                var pointId = (ulong)(distractors + i + 1);
+                idMap[docId] = pointId;
+                var vec = await EmbedAsync(http, ollamaUrl, model, $"{title}. {text}");
+                await client.UpsertAsync(collection, new[]
+                {
+                    new PointStruct
+                    {
+                        Id = pointId,
+                        Vectors = vec,
+                        Payload =
+                        {
+                            ["kind"] = "labeled",
+                            ["doc_id"] = docId,
+                            ["title"] = title,
+                            ["text"] = text
+                        }
+                    }
+                });
+                if ((i + 1) % 10 == 0)
+                    Console.WriteLine($"Labeled upserted {i + 1}/{docs.Count}");
+            }
+        }
+        else
+        {
+            for (var i = 0; i < docs.Count; i++)
+                idMap[docs[i].Id] = (ulong)(distractors + i + 1);
+            Console.WriteLine("--skip-seed: reusing existing collection points");
+        }
+
+        // CRITICAL: refuse to measure until HNSW has indexed vectors
+        var indexOk = await WaitForHnswIndexAsync(client, collection, minIndexed: 1, timeoutSec: 300);
+        if (!indexOk)
+        {
+            Console.WriteLine("NOT MEASURED — indexed_vectors_count never rose above 0 (HNSW not engaged)");
+            return 1;
+        }
+
+        var info = await client.GetCollectionInfoAsync(collection);
+        Console.WriteLine($"INDEX_STATE points={info.PointsCount} indexed={info.IndexedVectorsCount} status={info.Status}");
+        if (info.IndexedVectorsCount == 0)
+        {
+            Console.WriteLine("NOT MEASURED — indexed_vectors_count=0 after wait; ef sweep would be invalid");
+            return 1;
+        }
+        if (info.PointsCount < 10_000)
+        {
+            Console.WriteLine(
+                $"NOT MEASURED — points_count={info.PointsCount} below typical indexing_threshold; " +
+                "ef would be ignored (exact search)");
+            return 1;
         }
 
         // Primary metrics at default ef
         var primary = await MeasureRetrievalAsync(
             http, ollamaUrl, model, client, collection, queries, idMap, defaultEf, searchRepeats: 5);
-        Console.WriteLine("=== PRIMARY (default HNSW ef) ===");
+        Console.WriteLine("=== PRIMARY (default HNSW ef, index engaged) ===");
         Console.WriteLine($"EF={defaultEf}");
         PrintRetrievalMetrics(primary);
+        if (primary.RecallAt5 >= 0.999)
+            Console.WriteLine("WARNING: recall@5 still saturated at 1.0 — eval may still be too easy");
 
         // Tradeoff curve
         Console.WriteLine("=== EF TRADEOFF CURVE ===");
@@ -652,19 +730,43 @@ class Program
                 $"recall@10={m.RecallAt10:F4} mrr@10={m.MrrAt10:F4} search_p95_ms={m.SearchP95Ms:F3}");
         }
 
+        var post = await client.GetCollectionInfoAsync(collection);
         Console.WriteLine("=== RETRIEVAL QUALITY RESULTS ===");
         Console.WriteLine($"RQ_MODEL={model}");
-        Console.WriteLine($"RQ_N_DOCS={docs.Count}");
+        Console.WriteLine($"RQ_N_LABELED={docs.Count}");
+        Console.WriteLine($"RQ_N_DISTRACTORS={distractors}");
         Console.WriteLine($"RQ_N_QUERIES={queries.Count}");
+        Console.WriteLine($"RQ_POINTS={post.PointsCount}");
+        Console.WriteLine($"RQ_INDEXED_VECTORS={post.IndexedVectorsCount}");
         Console.WriteLine($"RQ_EF_DEFAULT={defaultEf}");
         Console.WriteLine($"RQ_RECALL_AT_1={primary.RecallAt1:F4}");
         Console.WriteLine($"RQ_RECALL_AT_5={primary.RecallAt5:F4}");
         Console.WriteLine($"RQ_RECALL_AT_10={primary.RecallAt10:F4}");
         Console.WriteLine($"RQ_MRR_AT_10={primary.MrrAt10:F4}");
         Console.WriteLine($"RQ_SEARCH_P95_MS={primary.SearchP95Ms:F3}");
-        Console.WriteLine($"RQ_LABELING=title_owns_abstract_structural_not_from_embedder");
+        Console.WriteLine("RQ_QUERY_TYPE=paraphrase_low_title_overlap");
+        Console.WriteLine("RQ_LABELING=structural_doc_ownership_not_from_embedder");
         Console.WriteLine("=== END ===");
         return 0;
+    }
+
+    /// <summary>
+    /// Poll until indexed_vectors_count &gt; 0 so ef sweeps cannot silently measure exact search.
+    /// </summary>
+    static async Task<bool> WaitForHnswIndexAsync(
+        QdrantClient client, string collection, ulong minIndexed, int timeoutSec)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(timeoutSec);
+        while (DateTime.UtcNow < deadline)
+        {
+            var info = await client.GetCollectionInfoAsync(collection);
+            Console.WriteLine(
+                $"  index wait: points={info.PointsCount} indexed={info.IndexedVectorsCount} status={info.Status}");
+            if (info.IndexedVectorsCount >= minIndexed)
+                return true;
+            await Task.Delay(2000);
+        }
+        return false;
     }
 
     sealed class RetrievalMetrics
@@ -689,7 +791,6 @@ class Program
         double rrSum = 0;
         var searchLatencies = new List<double>();
 
-        // Pre-embed queries once
         var qVecs = new List<float[]>(queries.Count);
         foreach (var (q, _) in queries)
             qVecs.Add(await EmbedAsync(http, ollamaUrl, model, q));
@@ -699,8 +800,6 @@ class Program
             var relevantPoint = idMap[queries[qi].RelevantId];
             var vec = qVecs[qi];
 
-            // Latency: average of searchRepeats (exclude first as micro-warmup per query)
-            double lastMs = 0;
             IReadOnlyList<Qdrant.Client.Grpc.ScoredPoint>? results = null;
             for (var r = 0; r < searchRepeats; r++)
             {
@@ -711,13 +810,12 @@ class Program
                     limit: 10,
                     searchParams: new SearchParams { HnswEf = (ulong)hnswEf });
                 sw.Stop();
-                lastMs = sw.Elapsed.TotalMilliseconds;
                 if (r > 0)
-                    searchLatencies.Add(lastMs);
+                    searchLatencies.Add(sw.Elapsed.TotalMilliseconds);
             }
 
             var ranked = results!.Select(r => r.Id.Num).ToList();
-            var rank = ranked.IndexOf(relevantPoint); // 0-based, -1 if missing
+            var rank = ranked.IndexOf(relevantPoint);
             if (rank == 0) hits1++;
             if (rank >= 0 && rank < 5) hits5++;
             if (rank >= 0 && rank < 10) hits10++;

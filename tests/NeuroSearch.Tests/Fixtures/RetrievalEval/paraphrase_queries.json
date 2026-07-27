@@ -1,356 +1,622 @@
 {
-  "labeling_method": "relevant_ids assigned at fixture authoring from which document the paraphrase was written about. Independent of nomic-embed-text or any model under test.",
   "rewrite_rule": "Each query is a natural-language information need derived from the abstract's meaning, not a copy of the title. Avoid proper names and distinctive title tokens where possible; allow at most ~2 content-word overlaps with the title (stopwords ignored). Labels remain structural: relevant doc = the document whose abstract motivated the paraphrase (title\u2192doc ownership), NEVER from running the embedder under test.",
+  "labeling_method": "relevant_ids assigned at fixture authoring from which document the paraphrase was written about. Independent of nomic-embed-text or any model under test.",
   "queries": [
     {
       "query_id": "q01",
+      "doc_id": "d01",
+      "title": "Attention Is All You Need",
       "query": "How can sequence models translate languages faster by looking at all positions at once instead of stepping through tokens?",
       "relevant_ids": [
         "d01"
-      ]
+      ],
+      "title_token_overlap": [
+        "all"
+      ],
+      "overlap_count": 1
     },
     {
       "query_id": "q02",
+      "doc_id": "d02",
+      "title": "BERT: Pre-training of Deep Bidirectional Transformers",
       "query": "What pretraining trick lets a model understand a word using the words both before and after it, then adapt with a tiny head?",
       "relevant_ids": [
         "d02"
-      ]
+      ],
+      "title_token_overlap": [],
+      "overlap_count": 0
     },
     {
       "query_id": "q03",
+      "doc_id": "d03",
+      "title": "GPT-3: Language Models are Few-Shot Learners",
       "query": "If I make an autoregressive model enormous, can it solve new NLP tasks from just a few examples without updating weights?",
       "relevant_ids": [
         "d03"
-      ]
+      ],
+      "title_token_overlap": [
+        "few"
+      ],
+      "overlap_count": 1
     },
     {
       "query_id": "q04",
+      "doc_id": "d04",
+      "title": "Retrieval-Augmented Generation for Knowledge-Intensive NLP",
       "query": "How do I ground a generator in a Wikipedia vector index so answers stay more factual?",
       "relevant_ids": [
         "d04"
-      ]
+      ],
+      "title_token_overlap": [],
+      "overlap_count": 0
     },
     {
       "query_id": "q05",
+      "doc_id": "d05",
+      "title": "HNSW: Efficient and Robust Approximate Nearest Neighbor Search",
       "query": "Which graph structure do vector databases use for fast approximate neighbor lookup with good hit rate?",
       "relevant_ids": [
         "d05"
-      ]
+      ],
+      "title_token_overlap": [
+        "approximate",
+        "neighbor"
+      ],
+      "overlap_count": 2
     },
     {
       "query_id": "q06",
+      "doc_id": "d06",
+      "title": "FAISS: A Library for Efficient Similarity Search",
       "query": "What open library packs product quantization and inverted indexes for huge embedding search on CPU or GPU?",
       "relevant_ids": [
         "d06"
-      ]
+      ],
+      "title_token_overlap": [
+        "library",
+        "search"
+      ],
+      "overlap_count": 2
     },
     {
       "query_id": "q07",
+      "doc_id": "d07",
+      "title": "Dense Passage Retrieval for Open-Domain Question Answering",
       "query": "How can dual encoders beat keyword search when finding passages for open-domain questions?",
       "relevant_ids": [
         "d07"
-      ]
+      ],
+      "title_token_overlap": [
+        "domain",
+        "open"
+      ],
+      "overlap_count": 2
     },
     {
       "query_id": "q08",
+      "doc_id": "d08",
+      "title": "ColBERT: Efficient and Effective Passage Search via Late Interaction",
       "query": "Is there a retrieval method that scores queries against documents token-by-token at the end for a better speed/quality balance?",
       "relevant_ids": [
         "d08"
-      ]
+      ],
+      "title_token_overlap": [],
+      "overlap_count": 0
     },
     {
       "query_id": "q09",
+      "doc_id": "d09",
+      "title": "BM25: A Probabilistic Ranking Function",
       "query": "What classic sparse ranking formula uses term frequency saturation and inverse document frequency?",
       "relevant_ids": [
         "d09"
-      ]
+      ],
+      "title_token_overlap": [
+        "ranking"
+      ],
+      "overlap_count": 1
     },
     {
       "query_id": "q10",
+      "doc_id": "d10",
+      "title": "Word2Vec: Efficient Estimation of Word Representations",
       "query": "How were early distributed word vectors trained with skip-gram or bag-of-words on big text dumps?",
       "relevant_ids": [
         "d10"
-      ]
+      ],
+      "title_token_overlap": [
+        "word"
+      ],
+      "overlap_count": 1
     },
     {
       "query_id": "q11",
+      "doc_id": "d11",
+      "title": "GloVe: Global Vectors for Word Representation",
       "query": "Can embeddings come from decomposing a matrix of how often terms appear together across a whole corpus?",
       "relevant_ids": [
         "d11"
-      ]
+      ],
+      "title_token_overlap": [],
+      "overlap_count": 0
     },
     {
       "query_id": "q12",
+      "doc_id": "d12",
+      "title": "ELMo: Deep Contextualized Word Representations",
       "query": "How do bidirectional language-model states give each word a context-dependent vector?",
       "relevant_ids": [
         "d12"
-      ]
+      ],
+      "title_token_overlap": [
+        "word"
+      ],
+      "overlap_count": 1
     },
     {
       "query_id": "q13",
+      "doc_id": "d13",
+      "title": "RoBERTa: A Robustly Optimized BERT Pretraining Approach",
       "query": "What recipe improves BERT by dropping next-sentence prediction and training longer with bigger batches?",
       "relevant_ids": [
         "d13"
-      ]
+      ],
+      "title_token_overlap": [
+        "bert"
+      ],
+      "overlap_count": 1
     },
     {
       "query_id": "q14",
+      "doc_id": "d14",
+      "title": "T5: Exploring the Limits of Transfer Learning",
       "query": "Is there a single encoder-decoder that turns every NLP job into text-in text-out?",
       "relevant_ids": [
         "d14"
-      ]
+      ],
+      "title_token_overlap": [],
+      "overlap_count": 0
     },
     {
       "query_id": "q15",
+      "doc_id": "d15",
+      "title": "LoRA: Low-Rank Adaptation of Large Language Models",
       "query": "How do I fine-tune a huge model cheaply by freezing weights and training small rank adapters in attention?",
       "relevant_ids": [
         "d15"
-      ]
+      ],
+      "title_token_overlap": [
+        "rank"
+      ],
+      "overlap_count": 1
     },
     {
       "query_id": "q16",
+      "doc_id": "d16",
+      "title": "QLoRA: Efficient Finetuning of Quantized LLMs",
       "query": "Can I fine-tune a 65B model on one GPU by combining 4-bit weights with low-rank adapters?",
       "relevant_ids": [
         "d16"
-      ]
+      ],
+      "title_token_overlap": [],
+      "overlap_count": 0
     },
     {
       "query_id": "q17",
+      "doc_id": "d17",
+      "title": "FlashAttention: Fast and Memory-Efficient Exact Attention",
       "query": "How do I make the softmax over keys and queries faster by reducing trips to high-bandwidth DRAM?",
       "relevant_ids": [
         "d17"
-      ]
+      ],
+      "title_token_overlap": [],
+      "overlap_count": 0
     },
     {
       "query_id": "q18",
+      "doc_id": "d18",
+      "title": "Grouped-Query Attention",
       "query": "How can sharing key/value heads across query heads shrink the KV cache for long prompts?",
       "relevant_ids": [
         "d18"
-      ]
+      ],
+      "title_token_overlap": [
+        "query"
+      ],
+      "overlap_count": 1
     },
     {
       "query_id": "q19",
+      "doc_id": "d19",
+      "title": "Mixture of Experts Models",
       "query": "How do sparse expert layers grow parameter count without paying full compute on every token?",
       "relevant_ids": [
         "d19"
-      ]
+      ],
+      "title_token_overlap": [],
+      "overlap_count": 0
     },
     {
       "query_id": "q20",
+      "doc_id": "d20",
+      "title": "Constitutional AI: Harmlessness from AI Feedback",
       "query": "How can an AI critique itself against written principles to become less harmful with fewer human labels?",
       "relevant_ids": [
         "d20"
-      ]
+      ],
+      "title_token_overlap": [],
+      "overlap_count": 0
     },
     {
       "query_id": "q21",
+      "doc_id": "d21",
+      "title": "RLHF: Training Language Models to Follow Instructions",
       "query": "How do preference labels and a reward model plus PPO steer a language model toward what people want?",
       "relevant_ids": [
         "d21"
-      ]
+      ],
+      "title_token_overlap": [
+        "language"
+      ],
+      "overlap_count": 1
     },
     {
       "query_id": "q22",
+      "doc_id": "d22",
+      "title": "Direct Preference Optimization",
       "query": "Is there a way to train on preference pairs without fitting a separate reward model or running RL?",
       "relevant_ids": [
         "d22"
-      ]
+      ],
+      "title_token_overlap": [
+        "preference"
+      ],
+      "overlap_count": 1
     },
     {
       "query_id": "q23",
+      "doc_id": "d23",
+      "title": "Chain-of-Thought Prompting Elicits Reasoning",
       "query": "Does asking a model to write intermediate steps improve math and symbolic reasoning?",
       "relevant_ids": [
         "d23"
-      ]
+      ],
+      "title_token_overlap": [
+        "reasoning"
+      ],
+      "overlap_count": 1
     },
     {
       "query_id": "q24",
+      "doc_id": "d24",
+      "title": "ReAct: Synergizing Reasoning and Acting in Language Models",
       "query": "How do interleaved thoughts and tool actions help an agent decide what to do in an environment?",
       "relevant_ids": [
         "d24"
-      ]
+      ],
+      "title_token_overlap": [],
+      "overlap_count": 0
     },
     {
       "query_id": "q25",
+      "doc_id": "d25",
+      "title": "Toolformer: Language Models Can Teach Themselves to Use Tools",
       "query": "Can a model teach itself when to call calculators or search by inserting API calls during training?",
       "relevant_ids": [
         "d25"
-      ]
+      ],
+      "title_token_overlap": [
+        "teach"
+      ],
+      "overlap_count": 1
     },
     {
       "query_id": "q26",
+      "doc_id": "d26",
+      "title": "Semantic Kernel: Orchestrating AI Plugins",
       "query": "What .NET SDK wires LLMs to plugins, planners, and memory for agent apps?",
       "relevant_ids": [
         "d26"
-      ]
+      ],
+      "title_token_overlap": [
+        "plugins"
+      ],
+      "overlap_count": 1
     },
     {
       "query_id": "q27",
+      "doc_id": "d27",
+      "title": "LangChain: Building Applications with LLMs",
       "query": "Which Python toolkit gives chains, agents, and retrievers for composing LLM apps?",
       "relevant_ids": [
         "d27"
-      ]
+      ],
+      "title_token_overlap": [],
+      "overlap_count": 0
     },
     {
       "query_id": "q28",
+      "doc_id": "d28",
+      "title": "Qdrant Vector Database Architecture",
       "query": "Which open vector DB exposes HNSW, payload filters, and gRPC for semantic search?",
       "relevant_ids": [
         "d28"
-      ]
+      ],
+      "title_token_overlap": [
+        "vector"
+      ],
+      "overlap_count": 1
     },
     {
       "query_id": "q29",
+      "doc_id": "d29",
+      "title": "Pinecone Managed Vector Database",
       "query": "What managed service hosts approximate neighbor indexes for production semantic search?",
       "relevant_ids": [
         "d29"
-      ]
+      ],
+      "title_token_overlap": [
+        "managed"
+      ],
+      "overlap_count": 1
     },
     {
       "query_id": "q30",
+      "doc_id": "d30",
+      "title": "Weaviate Open-Source Vector Search",
       "query": "Which engine combines nearest-neighbor indexes with a GraphQL API and modular encoders?",
       "relevant_ids": [
         "d30"
-      ]
+      ],
+      "title_token_overlap": [],
+      "overlap_count": 0
     },
     {
       "query_id": "q31",
+      "doc_id": "d31",
+      "title": "Native AOT Compilation in .NET",
       "query": "How do I compile a .NET app ahead of time into one native binary that starts fast and ships small?",
       "relevant_ids": [
         "d31"
-      ]
+      ],
+      "title_token_overlap": [
+        "native",
+        "net"
+      ],
+      "overlap_count": 2
     },
     {
       "query_id": "q32",
+      "doc_id": "d32",
+      "title": "Docker Multi-Stage Builds",
       "query": "How do multi-step Dockerfiles keep compilers out of the final image?",
       "relevant_ids": [
         "d32"
-      ]
+      ],
+      "title_token_overlap": [
+        "multi"
+      ],
+      "overlap_count": 1
     },
     {
       "query_id": "q33",
+      "doc_id": "d33",
+      "title": "Kubernetes Horizontal Pod Autoscaling",
       "query": "How does a cluster add or remove replicas based on CPU or custom metrics under load?",
       "relevant_ids": [
         "d33"
-      ]
+      ],
+      "title_token_overlap": [],
+      "overlap_count": 0
     },
     {
       "query_id": "q34",
+      "doc_id": "d34",
+      "title": "gRPC vs REST for Microservices",
       "query": "When should microservices pick binary HTTP/2 RPCs over JSON HTTP APIs?",
       "relevant_ids": [
         "d34"
-      ]
+      ],
+      "title_token_overlap": [
+        "microservices"
+      ],
+      "overlap_count": 1
     },
     {
       "query_id": "q35",
+      "doc_id": "d35",
+      "title": "OWASP Top 10 Web Application Risks",
       "query": "Where can I find the canonical list of critical web risks like injection and broken auth?",
       "relevant_ids": [
         "d35"
-      ]
+      ],
+      "title_token_overlap": [
+        "risks",
+        "web"
+      ],
+      "overlap_count": 2
     },
     {
       "query_id": "q36",
+      "doc_id": "d36",
+      "title": "Prompt Injection Attacks on LLM Applications",
       "query": "How can untrusted page text trick an agent into ignoring its system goals or leaking secrets?",
       "relevant_ids": [
         "d36"
-      ]
+      ],
+      "title_token_overlap": [],
+      "overlap_count": 0
     },
     {
       "query_id": "q37",
+      "doc_id": "d37",
+      "title": "SSRF Defense in Web Applications",
       "query": "How do I stop a server from being tricked into fetching internal URLs?",
       "relevant_ids": [
         "d37"
-      ]
+      ],
+      "title_token_overlap": [],
+      "overlap_count": 0
     },
     {
       "query_id": "q38",
+      "doc_id": "d38",
+      "title": "Cross-Site Scripting Mitigation",
       "query": "What stops malicious scripts injected into HTML from running in users' browsers?",
       "relevant_ids": [
         "d38"
-      ]
+      ],
+      "title_token_overlap": [],
+      "overlap_count": 0
     },
     {
       "query_id": "q39",
+      "doc_id": "d39",
+      "title": "Rate Limiting with Token Buckets",
       "query": "How does a refillable token pool enforce average throughput while allowing short bursts?",
       "relevant_ids": [
         "d39"
-      ]
+      ],
+      "title_token_overlap": [
+        "token"
+      ],
+      "overlap_count": 1
     },
     {
       "query_id": "q40",
+      "doc_id": "d40",
+      "title": "Cosine Similarity for Embeddings",
       "query": "Why do people compare embedding directions with an angle-based score that ignores magnitude?",
       "relevant_ids": [
         "d40"
-      ]
+      ],
+      "title_token_overlap": [],
+      "overlap_count": 0
     },
     {
       "query_id": "q41",
+      "doc_id": "d41",
+      "title": "Dot Product vs Cosine Similarity",
       "query": "When are raw vector products the same as angle-based scores, and when do they differ?",
       "relevant_ids": [
         "d41"
-      ]
+      ],
+      "title_token_overlap": [],
+      "overlap_count": 0
     },
     {
       "query_id": "q42",
+      "doc_id": "d42",
+      "title": "Approximate Nearest Neighbor Tradeoffs",
       "query": "What knobs on approximate neighbor indexes trade hit rate against latency and memory?",
       "relevant_ids": [
         "d42"
-      ]
+      ],
+      "title_token_overlap": [
+        "approximate",
+        "neighbor"
+      ],
+      "overlap_count": 2
     },
     {
       "query_id": "q43",
+      "doc_id": "d43",
+      "title": "Mean Reciprocal Rank Evaluation",
       "query": "Which IR metric averages one over the rank of the first good hit across queries?",
       "relevant_ids": [
         "d43"
-      ]
+      ],
+      "title_token_overlap": [
+        "rank"
+      ],
+      "overlap_count": 1
     },
     {
       "query_id": "q44",
+      "doc_id": "d44",
+      "title": "Recall at K for Information Retrieval",
       "query": "How do you measure the share of queries that place a relevant doc in the first k hits?",
       "relevant_ids": [
         "d44"
-      ]
+      ],
+      "title_token_overlap": [],
+      "overlap_count": 0
     },
     {
       "query_id": "q45",
+      "doc_id": "d45",
+      "title": "nDCG Ranking Metric",
       "query": "What ranking metric discounts relevant hits that appear lower in the list?",
       "relevant_ids": [
         "d45"
-      ]
+      ],
+      "title_token_overlap": [
+        "metric",
+        "ranking"
+      ],
+      "overlap_count": 2
     },
     {
       "query_id": "q46",
+      "doc_id": "d46",
+      "title": "Ollama Local LLM Inference",
       "query": "How can I run open-weight chat and embedding models on my laptop over a simple HTTP API?",
       "relevant_ids": [
         "d46"
-      ]
+      ],
+      "title_token_overlap": [],
+      "overlap_count": 0
     },
     {
       "query_id": "q47",
+      "doc_id": "d47",
+      "title": "nomic-embed-text Embedding Model",
       "query": "Which local embedding model outputs 768-dim vectors for retrieval under Ollama?",
       "relevant_ids": [
         "d47"
-      ]
+      ],
+      "title_token_overlap": [
+        "embedding",
+        "model"
+      ],
+      "overlap_count": 2
     },
     {
       "query_id": "q48",
+      "doc_id": "d48",
+      "title": "Vector Quantization for Memory Savings",
       "query": "How do product or scalar compression cut index memory while keeping most neighbors correct?",
       "relevant_ids": [
         "d48"
-      ]
+      ],
+      "title_token_overlap": [
+        "memory"
+      ],
+      "overlap_count": 1
     },
     {
       "query_id": "q49",
+      "doc_id": "d49",
+      "title": "Hybrid Sparse-Dense Retrieval",
       "query": "Why fuse keyword scores with dense embedding scores for more robust search?",
       "relevant_ids": [
         "d49"
-      ]
+      ],
+      "title_token_overlap": [
+        "dense"
+      ],
+      "overlap_count": 1
     },
     {
       "query_id": "q50",
+      "doc_id": "d50",
+      "title": "Evaluation Pitfalls in Embedding Benchmarks",
       "query": "Why is it wrong to label relevance using the same embedder you are evaluating?",
       "relevant_ids": [
         "d50"
-      ]
+      ],
+      "title_token_overlap": [],
+      "overlap_count": 0
     }
   ]
 }
