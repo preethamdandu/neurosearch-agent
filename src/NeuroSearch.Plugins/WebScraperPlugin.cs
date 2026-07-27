@@ -73,7 +73,7 @@ public class WebScraperPlugin
             var extracted = ExtractText(html);
 
             // Content-boundary defense: sanitize + spotlight as Untrusted
-            var tainted = _session.Spotlight.WrapUntrusted(extracted, validatedUrl);
+            var tainted = _session.Spotlight.WrapUntrusted(extracted, validatedUrl, _session.Defenses);
             _session.MarkUntrusted(validatedUrl);
 
             Console.ForegroundColor = ConsoleColor.Green;

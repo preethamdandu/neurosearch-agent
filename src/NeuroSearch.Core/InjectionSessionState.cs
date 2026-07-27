@@ -18,7 +18,15 @@ public sealed class InjectionSessionState
     private readonly HashSet<string> _trustedSubstrings = new(StringComparer.Ordinal);
     private readonly ConcurrentQueue<string> _blockLog = new();
 
+    private bool _userRequestedMemorySave;
+
     public SpotlightFormatter Spotlight { get; }
+
+    /// <summary>
+    /// Test/benchmark-only defense gates. Default AllOn.
+    /// Never loaded from configuration — set only on objects you construct in tests.
+    /// </summary>
+    public DefenseSwitches Defenses { get; set; } = DefenseSwitches.AllOn;
 
     /// <summary>Max automatic tool invocations per user turn.</summary>
     public int MaxToolCallsPerTurn { get; init; } = 8;
@@ -26,15 +34,27 @@ public sealed class InjectionSessionState
     /// <summary>Max automatic tool invocations per process/session.</summary>
     public int MaxToolCallsPerSession { get; init; } = 40;
 
-    public InjectionSessionState(SpotlightFormatter? spotlight = null)
+    public InjectionSessionState(SpotlightFormatter? spotlight = null, DefenseSwitches? defenses = null)
     {
         Spotlight = spotlight ?? new SpotlightFormatter();
+        if (defenses != null)
+            Defenses = defenses;
     }
 
     public string SessionDelimiterId => Spotlight.SessionId;
     public bool HasUntrustedInContext
     {
         get { lock (_gate) return _hasUntrustedInContext; }
+    }
+
+    /// <summary>
+    /// True when the latest user message explicitly asked to save/remember something.
+    /// Narrows the tainted-sink carve-out: research→save is allowed (tagged untrusted),
+    /// page-induced Save without user intent is blocked.
+    /// </summary>
+    public bool UserRequestedMemorySave
+    {
+        get { lock (_gate) return _userRequestedMemorySave; }
     }
 
     public IReadOnlyList<string> UntrustedOrigins
@@ -64,11 +84,47 @@ public sealed class InjectionSessionState
         {
             _lastUserMessage = userMessage;
             _toolCallsThisTurn = 0;
+            _userRequestedMemorySave = DetectMemorySaveIntent(userMessage);
             ExtractUrls(userMessage, _userAuthorizedUrls);
             // User text is trusted — keep short substrings for exfil grounding checks
             if (!string.IsNullOrWhiteSpace(userMessage) && userMessage.Length >= 16)
                 _trustedSubstrings.Add(userMessage.Length > 200 ? userMessage[..200] : userMessage);
         }
+    }
+
+    /// <summary>
+    /// Detect explicit user intent to persist findings. Phrase list is intentional —
+    /// this is a product intent detector for the tainted-sink carve-out, not a security
+    /// blocklist. Keep narrow; prefer false-negative (block save) over false-positive.
+    /// </summary>
+    public static bool DetectMemorySaveIntent(string? message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+            return false;
+
+        ReadOnlySpan<string> intents =
+        [
+            "save what you find",
+            "save what you learn",
+            "save it to memory",
+            "save to memory",
+            "save this",
+            "save that",
+            "remember this",
+            "remember what",
+            "store in memory",
+            "store this",
+            "memorize",
+            "add to memory",
+            "write to memory"
+        ];
+
+        foreach (var intent in intents)
+        {
+            if (message.Contains(intent, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
     }
 
     /// <summary>Record that untrusted content from a tool entered the context.</summary>

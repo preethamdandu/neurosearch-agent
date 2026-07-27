@@ -96,7 +96,7 @@ public class WebSearchPlugin
 
             // Search results are attacker-influenced → Untrusted + spotlight
             var origin = $"serper:search:{sanitizedQuery}";
-            var tainted = _session.Spotlight.WrapUntrusted(formatted, origin);
+            var tainted = _session.Spotlight.WrapUntrusted(formatted, origin, _session.Defenses);
             _session.MarkUntrusted(origin);
 
             Console.ForegroundColor = ConsoleColor.Green;

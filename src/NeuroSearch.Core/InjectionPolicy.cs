@@ -47,7 +47,7 @@ public sealed class InjectionPolicy
         var fqAlt = $"{pluginName}-{functionName}";
 
         // 1. Allowlist (accept Foo / FooAsync variants — models often drop the Async suffix)
-        if (!IsAllowlisted(pluginName, functionName))
+        if (_state.Defenses.Allowlist && !IsAllowlisted(pluginName, functionName))
         {
             return PolicyDecision.Block(
                 "allowlist",
@@ -55,26 +55,35 @@ public sealed class InjectionPolicy
         }
 
         // 2. Budget (consume on evaluate so runaway chains trip the gate)
-        if (!_state.TryConsumeToolBudget(out var budgetReason))
+        if (_state.Defenses.Budget && !_state.TryConsumeToolBudget(out var budgetReason))
         {
             return PolicyDecision.Block("budget", budgetReason!);
         }
 
-        // 3. Tainted-sink: VectorMemory.Save while untrusted content is in context
-        if (IsSave(pluginName, functionName) && _state.HasUntrustedInContext)
+        // 3. Tainted-sink: VectorMemory.Save while untrusted content is in context.
+        // Carve-out (narrowed): allow when the USER explicitly requested a memory save
+        // this turn (research→save happy path) OR the text is grounded in the user message.
+        // Payload is still tagged provenance=untrusted by VectorMemoryPlugin.
+        // Page-induced Save without user save-intent remains blocked (poisoning defense).
+        if (_state.Defenses.TaintedSinkRule &&
+            IsSave(pluginName, functionName) &&
+            _state.HasUntrustedInContext)
         {
             var text = GetArg(args, "text") ?? string.Empty;
-            if (!_state.IsTextGroundedInUserMessage(text))
+            var userAskedToSave = _state.UserRequestedMemorySave;
+            var grounded = _state.IsTextGroundedInUserMessage(text);
+            if (!userAskedToSave && !grounded)
             {
                 return PolicyDecision.Block(
                     "tainted-sink",
                     "Blocked VectorMemory.Save: untrusted web content is in context and " +
-                    "save text is not grounded in the latest user message (memory-poisoning defense).");
+                    "the user did not request a memory save this turn " +
+                    "(memory-poisoning defense).");
             }
         }
 
         // 4. Exfiltration / unauthorized outbound URL
-        if (IsOutboundNetwork(pluginName, functionName))
+        if (_state.Defenses.ExfilCheck && IsOutboundNetwork(pluginName, functionName))
         {
             var url = GetArg(args, "url") ?? GetArg(args, "query") ?? string.Empty;
             var argBlob = string.Join("&", args.Select(kv => $"{kv.Key}={kv.Value}"));
@@ -83,7 +92,6 @@ public sealed class InjectionPolicy
             {
                 if (!_state.IsUrlAuthorized(url))
                 {
-                    // Secondary signal only — still block on authorization failure
                     LogSecondarySignalIfPresent(url);
                     return PolicyDecision.Block(
                         "exfiltration",
@@ -101,9 +109,8 @@ public sealed class InjectionPolicy
                     "(high-entropy query string or trusted-context substring in URL).");
             }
 
-            // Markdown-image style exfil host patterns in URL query
-            if (url.Contains("attacker.", StringComparison.OrdinalIgnoreCase) &&
-                url.Contains('?', StringComparison.Ordinal))
+            // Whole-URL exfil shapes (not querystring-only): path, subdomain, fragment
+            if (LooksLikeExfilUrlShape(url))
             {
                 return PolicyDecision.Block(
                     "exfiltration",
@@ -182,4 +189,81 @@ public sealed class InjectionPolicy
 
     private static string Truncate(string s, int max) =>
         s.Length <= max ? s : s[..max] + "...";
+
+    /// <summary>
+    /// Detect exfil URL shapes across query, path, subdomain, and fragment —
+    /// not querystring-only (which would be a regex-shaped blind spot).
+    /// </summary>
+    internal static bool LooksLikeExfilUrlShape(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+            return false;
+
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+        {
+            // Still check host-ish attacker markers in raw string
+            return url.Contains("attacker.", StringComparison.OrdinalIgnoreCase) &&
+                   (url.Contains('?', StringComparison.Ordinal) ||
+                    url.Contains('#', StringComparison.Ordinal) ||
+                    HasLongBase64ishToken(url));
+        }
+
+        var host = uri.Host ?? "";
+        var path = uri.AbsolutePath ?? "";
+        var query = uri.Query ?? "";
+        var fragment = uri.Fragment ?? "";
+
+        // Known canary attacker hosts used in tests / demos
+        var isAttackerHost = host.Contains("attacker.", StringComparison.OrdinalIgnoreCase) ||
+                             host.EndsWith(".attacker.test", StringComparison.OrdinalIgnoreCase) ||
+                             host.Equals("attacker.test", StringComparison.OrdinalIgnoreCase);
+
+        if (isAttackerHost)
+        {
+            // Any non-empty query, fragment, or long path token on attacker host is suspect
+            if (!string.IsNullOrEmpty(query) && query.Length > 1)
+                return true;
+            if (!string.IsNullOrEmpty(fragment) && fragment.Length > 1)
+                return true;
+            if (HasLongBase64ishToken(path.Trim('/')))
+                return true;
+            // subdomain exfil: <token>.attacker.test
+            var labels = host.Split('.', StringSplitOptions.RemoveEmptyEntries);
+            if (labels.Length >= 3 && HasLongBase64ishToken(labels[0]))
+                return true;
+            // bare attacker.test with encoded path segment
+            if (path.Length > 8)
+                return true;
+        }
+
+        // Subdomain exfil even without "attacker" name: long base64 label + suspicious TLD pairing
+        // kept narrow — only when a label looks like base64 payload (>=16 chars, high entropy charset)
+        var hostLabels = host.Split('.', StringSplitOptions.RemoveEmptyEntries);
+        if (hostLabels.Length >= 3 && HasLongBase64ishToken(hostLabels[0]) && hostLabels[0].Length >= 16)
+            return true;
+
+        // Fragment exfil with high-entropy payload
+        if (fragment.Length > 20 && HasLongBase64ishToken(fragment.TrimStart('#')))
+            return true;
+
+        // Path-segment exfil: single long base64-ish path segment
+        var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Any(s => s.Length >= 16 && HasLongBase64ishToken(s)))
+            return true;
+
+        return false;
+    }
+
+    private static bool HasLongBase64ishToken(string s)
+    {
+        if (string.IsNullOrEmpty(s) || s.Length < 12)
+            return false;
+        var b64Chars = 0;
+        foreach (var c in s)
+        {
+            if (char.IsLetterOrDigit(c) || c is '+' or '/' or '=' or '-' or '_')
+                b64Chars++;
+        }
+        return b64Chars >= s.Length * 0.9 && s.Length >= 12;
+    }
 }
