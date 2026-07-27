@@ -16,7 +16,7 @@ Sub-millisecond Qdrant search is Qdrant's achievement. Shipping an agentic SK st
 
 Most security writeups list controls. This one measured attack success on identical payloads (`qwen3.5:9b`, temp 0, 3 repeats):
 
-> Spotlighting reduced attack success from **13/23 to 1/23** after search-path payloads were added (was 12/20→1/20; McNemar A↔B p ≈ 0.000488) — significant at α=0.05. Policy 1→0 still not demonstrable at this n. Cross-model generalization is untested.
+> Spotlighting reduced attack success from **15/23 to 1/23** on identical payloads including 3 valid search-path shapes (McNemar A↔B p ≈ 0.000122, n=23). A smaller p than the prior N=20 run is **not** stronger evidence — n and discordant pairs grew. Prior baseline without search-path: 12/20→1/20. Cross-model generalization is untested.
 
 **Six enforcing controls** (not seven): content sanitizer, delimiter neutralizer, spotlight wrapper, tainted-sink rule, allowlist (tools **and** outbound hosts/provenance), tool-call budget. A seventh “ExfilCheck” shape heuristic was demoted to **advisory-only** after an audit showed it matched fixture domains (`attacker.*`) while the allowlist did the real work — a control count going **down** after scrutiny.
 
@@ -50,11 +50,12 @@ User → SK agent → tools
 docker compose up -d
 # ollama serve && ollama pull nomic-embed-text && ollama pull qwen3.5:9b
 
-# API keys — user-secrets OR environment (never commit real keys)
+# API keys — user-secrets (dev) OR environment (containers; user-secrets unavailable in Docker)
 dotnet user-secrets set "Tavily:ApiKey" "tvly-..." --project src/NeuroSearch.Agent
 dotnet user-secrets set "Serper:ApiKey" "..." --project src/NeuroSearch.Agent
 # or: export TAVILY_API_KEY=... SERPER_API_KEY=...
-# or: copy .env.example → .env (gitignored)
+# or container: -e Tavily__ApiKey=... -e Serper__ApiKey=...
+# or: copy .env.example → .env (gitignored; never commit)
 
 # Run (JIT; PublishAot stays false by default)
 # Default search provider = tavily (basic depth). Override: --provider serper
@@ -66,15 +67,21 @@ dotnet run --project src/NeuroSearch.Agent -c Release -- --smoke-test
 dotnet run --project src/NeuroSearch.Agent -c Release -- --live-verify --provider tavily
 dotnet run --project src/NeuroSearch.Agent -c Release -- --live-verify --provider serper
 
-# Tests (109 as of web-search/multi-hop session — not “109 attack defenses”)
+# Tests (117 as of trust-boundary audit — not “117 attack defenses”)
 dotnet test tests/NeuroSearch.Tests/NeuroSearch.Tests.csproj -c Release
 
-# AOT container
+# AOT container (Docker Desktop macOS: use host.docker.internal, not --network host)
 docker build -t neurosearch-agent:aot .
 docker run --rm neurosearch-agent:aot --startup-benchmark
+docker run --rm \
+  -e Ollama__Endpoint=http://host.docker.internal:11434 \
+  -e Qdrant__Host=host.docker.internal \
+  -e Tavily__ApiKey="$TAVILY_API_KEY" \
+  -e Serper__ApiKey="$SERPER_API_KEY" \
+  neurosearch-agent:aot --smoke-test
 ```
 
-**Why Tavily is default:** purpose-built for LLM retrieval (clean snippets + optional `RawContent`), which reduces WebScraper calls — the main injection surface. Serper remains selectable. Search-returned content is still Untrusted + spotlighted (same threat model as scraped HTML).
+**Why Tavily is default:** purpose-built for LLM retrieval (clean snippets + optional `RawContent`), which reduces WebScraper calls — the main injection surface. Serper remains selectable. Search-returned content (including Tavily `answer` / `RawContent`) is still Untrusted + spotlighted. Provider URL authorization is **exact-URL** (not host-scoped).
 
 More reproduce commands (ASR, retrieval quality, latency benches): see §8 / §14 of `MEASUREMENTS.txt`.
 
@@ -100,8 +107,8 @@ Source of truth: **[`MEASUREMENTS.txt`](MEASUREMENTS.txt)** (outranks resume/int
 - Injection-proof / red-team certified  
 - Azure production deploy  
 - Cross-model ASR generalization  
-- That an early N=50 “ef sweep” measured HNSW (it didn’t — `indexed_vectors_count` was 0; table deleted)
-- Live Serper/Tavily verification until real API keys are configured (see MEASUREMENTS `## BLOCKERS`)  
+- That an early N=50 “ef sweep” measured HNSW (it didn’t — `indexed_vectors_count` was 0; table deleted)  
+  
 
 ---
 
