@@ -20,6 +20,8 @@ public class VectorMemoryPlugin
     private readonly string _embeddingModel;
     private readonly string _ollamaEndpoint;
     private readonly ulong _vectorSize;
+    private readonly ulong _hnswEf;
+    private readonly string _quantization;
     private readonly InjectionSessionState _session;
     private bool _collectionReady;
 
@@ -30,7 +32,9 @@ public class VectorMemoryPlugin
         string embeddingModel = "nomic-embed-text",
         string collectionName = "neurosearch-memory",
         ulong vectorSize = 768,
-        InjectionSessionState? session = null)
+        InjectionSessionState? session = null,
+        ulong hnswEf = 16,
+        string quantization = "none")
     {
         _qdrant = qdrant ?? throw new ArgumentNullException(nameof(qdrant));
         _http = http ?? throw new ArgumentNullException(nameof(http));
@@ -39,9 +43,13 @@ public class VectorMemoryPlugin
         _collectionName = collectionName;
         _vectorSize = vectorSize;
         _session = session ?? new InjectionSessionState();
+        _hnswEf = hnswEf == 0 ? 16 : hnswEf;
+        _quantization = string.IsNullOrWhiteSpace(quantization) ? "none" : quantization.Trim().ToLowerInvariant();
     }
 
     public InjectionSessionState Session => _session;
+    public ulong HnswEf => _hnswEf;
+    public string QuantizationMode => _quantization;
 
     [KernelFunction]
     [Description("Saves important information to long-term memory for future retrieval. Use this to remember facts, insights, or context for later use.")]
@@ -132,6 +140,7 @@ public class VectorMemoryPlugin
                 vector,
                 limit: (ulong)limit,
                 scoreThreshold: (float)minRelevance,
+                searchParams: BuildSearchParams(),
                 cancellationToken: cancellationToken);
 
             if (results.Count == 0)
@@ -186,6 +195,24 @@ public class VectorMemoryPlugin
         var exists = await _qdrant.CollectionExistsAsync(_collectionName, cancellationToken);
         if (!exists)
         {
+            QuantizationConfig? quant = _quantization switch
+            {
+                "scalar" or "int8" => new QuantizationConfig
+                {
+                    Scalar = new ScalarQuantization
+                    {
+                        Type = QuantizationType.Int8,
+                        Quantile = 0.99f,
+                        AlwaysRam = true
+                    }
+                },
+                "binary" => new QuantizationConfig
+                {
+                    Binary = new BinaryQuantization { AlwaysRam = true }
+                },
+                _ => null
+            };
+
             await _qdrant.CreateCollectionAsync(
                 _collectionName,
                 new VectorParams
@@ -194,10 +221,31 @@ public class VectorMemoryPlugin
                     Distance = Distance.Cosine,
                     OnDisk = false
                 },
+                quantizationConfig: quant,
                 cancellationToken: cancellationToken);
+
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.WriteLine(
+                $"[MemoryPlugin] Created collection '{_collectionName}' " +
+                $"hnsw_ef={_hnswEf} quantization={_quantization}");
+            Console.ResetColor();
         }
 
         _collectionReady = true;
+    }
+
+    private SearchParams BuildSearchParams()
+    {
+        var sp = new SearchParams { HnswEf = _hnswEf };
+        if (_quantization is "scalar" or "int8" or "binary")
+        {
+            sp.Quantization = new QuantizationSearchParams
+            {
+                Rescore = true,
+                Oversampling = _quantization == "binary" ? 2.0 : 1.0
+            };
+        }
+        return sp;
     }
 
     private async Task<float[]> EmbedAsync(string text, CancellationToken cancellationToken)

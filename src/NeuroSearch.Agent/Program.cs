@@ -99,6 +99,8 @@ class Program
             var qdrantPort = int.Parse(configuration["Qdrant:GrpcPort"] ?? "6334");
             var collection = configuration["Qdrant:CollectionName"] ?? "neurosearch-memory";
             var vectorSize = ulong.Parse(configuration["Qdrant:VectorSize"] ?? "768");
+            var hnswEf = ulong.Parse(configuration["Qdrant:HnswEf"] ?? "16");
+            var quantization = configuration["Qdrant:Quantization"] ?? "scalar";
 
             var qdrant = new QdrantClient(qdrantHost, qdrantPort);
             var memoryPlugin = new VectorMemoryPlugin(
@@ -108,12 +110,16 @@ class Program
                 embeddingModel,
                 collection,
                 vectorSize,
-                sessionState);
+                sessionState,
+                hnswEf,
+                quantization);
 
             builder.Plugins.AddFromObject(memoryPlugin, "VectorMemory");
             PreservePluginSurface(memoryPlugin);
             Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine($"VectorMemory plugin enabled (Qdrant {qdrantHost}:{qdrantPort}, model={embeddingModel})");
+            Console.WriteLine(
+                $"VectorMemory plugin enabled (Qdrant {qdrantHost}:{qdrantPort}, " +
+                $"model={embeddingModel}, hnsw_ef={hnswEf}, quantization={quantization})");
             Console.ResetColor();
         }
         catch (Exception ex)
