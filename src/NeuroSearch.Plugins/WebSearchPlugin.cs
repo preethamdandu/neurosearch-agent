@@ -10,36 +10,36 @@ namespace NeuroSearch.Plugins;
 /// SECURITY-HARDENED Web search plugin
 /// - Input validation (SQL injection, XSS protection)
 /// - Rate limiting (10 req/min with burst of 5)
-/// - Secure API key handling (env variables only)
-/// - Graceful error handling
+/// - Content-boundary: search snippets marked Untrusted (OWASP LLM01)
 /// </summary>
 public class WebSearchPlugin
 {
     private readonly HttpClient _httpClient;
     private readonly string _apiKey;
     private readonly RateLimiter _rateLimiter;
+    private readonly InjectionSessionState _session;
     private const string SerperEndpoint = "https://google.serper.dev/search";
     private const int MaxResults = 10;
 
-    public WebSearchPlugin(HttpClient httpClient, string apiKey)
+    public WebSearchPlugin(HttpClient httpClient, string apiKey, InjectionSessionState? session = null)
     {
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _apiKey = apiKey ?? throw new ArgumentNullException(nameof(apiKey));
-        
-        // Rate limit: 10 requests/minute with burst of 5
+        _session = session ?? new InjectionSessionState();
         _rateLimiter = new RateLimiter(requestsPerMinute: 10, burstSize: 5);
     }
+
+    public InjectionSessionState Session => _session;
 
     [KernelFunction]
     [Description("Searches the internet for a given query and returns top search results with snippets. Use this when you need current information or facts from the web.")]
     public async Task<string> SearchAsync(
-        [Description("The search query (e.g., 'Tesla stock price 2026', 'latest AI news')")] 
+        [Description("The search query (e.g., 'Tesla stock price 2026', 'latest AI news')")]
         string query,
         [Description("Number of results to return (default: 5, max: 10)")]
         int numResults = 5,
         CancellationToken cancellationToken = default)
     {
-        // SECURITY: Input validation
         var validationResult = InputValidator.ValidateSearchQuery(query);
         if (!validationResult.IsValid)
         {
@@ -49,17 +49,14 @@ public class WebSearchPlugin
             return $"Error: {validationResult.ErrorMessage}";
         }
 
-        // Use sanitized query
-        var sanitizedQuery = validationResult.Value;
+        var sanitizedQuery = validationResult.Value!;
 
-        // SECURITY: Validate numeric range
         var rangeValidation = InputValidator.ValidateNumericRange(numResults, 1, MaxResults, "numResults");
         if (!rangeValidation.IsValid)
             return $"Error: {rangeValidation.ErrorMessage}";
 
-        numResults = int.Parse(rangeValidation.Value);
+        numResults = int.Parse(rangeValidation.Value!);
 
-        // SECURITY: Rate limiting
         var rateLimitResult = _rateLimiter.AllowRequest("search_api");
         if (!rateLimitResult.IsAllowed)
         {
@@ -91,18 +88,22 @@ public class WebSearchPlugin
             if (result?.Organic == null || result.Organic.Length == 0)
                 return "No results found for this query.";
 
-            // Format results for LLM consumption
             var formatted = string.Join("\n\n", result.Organic.Select((r, i) =>
                 $"Result {i + 1}:\n" +
                 $"Title: {r.Title}\n" +
                 $"Snippet: {r.Snippet}\n" +
                 $"URL: {r.Link}"));
 
+            // Search results are attacker-influenced → Untrusted + spotlight
+            var origin = $"serper:search:{sanitizedQuery}";
+            var tainted = _session.Spotlight.WrapUntrusted(formatted, origin);
+            _session.MarkUntrusted(origin);
+
             Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine($"[✓ SearchPlugin] Found {result.Organic.Length} results");
+            Console.WriteLine($"[✓ SearchPlugin] Found {result.Organic.Length} results → spotlighted Untrusted");
             Console.ResetColor();
 
-            return formatted;
+            return tainted.Text;
         }
         catch (HttpRequestException ex)
         {
@@ -114,7 +115,6 @@ public class WebSearchPlugin
         }
     }
 
-    // Internal models for Serper API
     private record SearchRequest
     {
         [JsonPropertyName("q")]

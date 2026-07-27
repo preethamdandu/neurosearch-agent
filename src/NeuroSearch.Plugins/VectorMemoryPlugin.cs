@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.SemanticKernel;
+using NeuroSearch.Core;
 using Qdrant.Client;
 using Qdrant.Client.Grpc;
 
@@ -9,6 +10,7 @@ namespace NeuroSearch.Plugins;
 
 /// <summary>
 /// Vector memory plugin for long-term semantic storage using Qdrant + Ollama embeddings.
+/// Persists provenance=untrusted when saves occur while untrusted content is in context.
 /// </summary>
 public class VectorMemoryPlugin
 {
@@ -18,6 +20,7 @@ public class VectorMemoryPlugin
     private readonly string _embeddingModel;
     private readonly string _ollamaEndpoint;
     private readonly ulong _vectorSize;
+    private readonly InjectionSessionState _session;
     private bool _collectionReady;
 
     public VectorMemoryPlugin(
@@ -26,7 +29,8 @@ public class VectorMemoryPlugin
         string ollamaEndpoint,
         string embeddingModel = "nomic-embed-text",
         string collectionName = "neurosearch-memory",
-        ulong vectorSize = 768)
+        ulong vectorSize = 768,
+        InjectionSessionState? session = null)
     {
         _qdrant = qdrant ?? throw new ArgumentNullException(nameof(qdrant));
         _http = http ?? throw new ArgumentNullException(nameof(http));
@@ -34,7 +38,10 @@ public class VectorMemoryPlugin
         _embeddingModel = embeddingModel;
         _collectionName = collectionName;
         _vectorSize = vectorSize;
+        _session = session ?? new InjectionSessionState();
     }
+
+    public InjectionSessionState Session => _session;
 
     [KernelFunction]
     [Description("Saves important information to long-term memory for future retrieval. Use this to remember facts, insights, or context for later use.")]
@@ -58,6 +65,14 @@ public class VectorMemoryPlugin
             var vector = await EmbedAsync(text, cancellationToken);
             var id = (ulong)(DateTime.UtcNow.Ticks ^ Random.Shared.NextInt64());
 
+            // Provenance: anything saved while untrusted content is in context is tagged forever
+            var provenance = _session.HasUntrustedInContext
+                ? ContentProvenance.Untrusted
+                : ContentProvenance.Trusted;
+            var originUrl = _session.HasUntrustedInContext
+                ? (_session.UntrustedOrigins.LastOrDefault() ?? "unknown")
+                : "user";
+
             var point = new PointStruct
             {
                 Id = id,
@@ -66,17 +81,19 @@ public class VectorMemoryPlugin
                 {
                     ["text"] = text,
                     ["metadata"] = metadata ?? string.Empty,
-                    ["created_at"] = DateTime.UtcNow.ToString("O")
+                    ["created_at"] = DateTime.UtcNow.ToString("O"),
+                    ["provenance"] = provenance.ToString().ToLowerInvariant(),
+                    ["origin_url"] = originUrl
                 }
             };
 
             await _qdrant.UpsertAsync(_collectionName, new[] { point }, cancellationToken: cancellationToken);
 
             Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine($"[MemoryPlugin] Saved id={id}");
+            Console.WriteLine($"[MemoryPlugin] Saved id={id} provenance={provenance} origin={originUrl}");
             Console.ResetColor();
 
-            return $"Successfully saved to memory. ID: {id}";
+            return $"Successfully saved to memory. ID: {id}; provenance={provenance.ToString().ToLowerInvariant()}; origin_url={originUrl}";
         }
         catch (Exception ex)
         {
@@ -125,9 +142,13 @@ public class VectorMemoryPlugin
                 return "No relevant memories found. Try lowering the minRelevance threshold or rephrasing your query.";
             }
 
-            var memories = results
-                .Select(r => $"[Relevance: {r.Score:F2}] {r.Payload["text"].StringValue}")
-                .ToList();
+            var memories = results.Select(r =>
+            {
+                var text = r.Payload.TryGetValue("text", out var t) ? t.StringValue : "";
+                var provenance = r.Payload.TryGetValue("provenance", out var p) ? p.StringValue : "unknown";
+                var origin = r.Payload.TryGetValue("origin_url", out var o) ? o.StringValue : "unknown";
+                return $"[Relevance: {r.Score:F2}] [provenance={provenance}] [origin_url={origin}] {text}";
+            }).ToList();
 
             Console.ForegroundColor = ConsoleColor.Green;
             Console.WriteLine($"[MemoryPlugin] Found {memories.Count} relevant memories");
