@@ -62,14 +62,17 @@ measurement methodology.
 
 ### Option 5: Security Hardening (Best for Security / Regulated Industries)
 ```
-Enforced OWASP-oriented security: 43 automated unit tests covering SQL injection,
-XSS, SSRF URL blocking, and token-bucket rate limiting. Added repo-wide NuGet
-audit-as-error gate (Directory.Build.props) that fails builds on any moderate+
-CVE — cleared known advisory GHSA-2ww3-72rp-wpp4 by upgrading Semantic Kernel
-from 1.32.0 to 1.78.0.
+Enforced OWASP-oriented security across input AND content boundaries: 81
+automated tests (43 input validation + LLM01 content-boundary suite). Not all
+are distinct attack defenses — some assert pipeline wrapping only (documented
+in MEASUREMENTS.txt §11). Happy-path research→save works under defenses;
+mutation matrix covers each control; benign corpus heuristic FP 0/40 after
+narrowing (was 29/40). Spotlighting ASR probe 2/20 ON vs 12/20 OFF on
+qwen3.5:9b (n=20, not significant). Cleared GHSA-2ww3-72rp-wpp4 (SK 1.78.0).
+Defense-in-depth — not injection-proof.
 ```
-**Why it works**: Shows proactive security posture with real test counts and a
-documented CVE remediation.
+**Why it works**: Shows security posture with honest test taxonomy, FP rate,
+and measured soft-control effect — without overclaiming.
 
 ---
 
