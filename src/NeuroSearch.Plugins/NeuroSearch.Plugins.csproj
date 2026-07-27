@@ -9,9 +9,8 @@
 
   <ItemGroup>
     <PackageReference Include="HtmlAgilityPack" Version="1.11.71" />
-    <PackageReference Include="Microsoft.SemanticKernel" Version="1.32.0" />
-    <PackageReference Include="Microsoft.SemanticKernel.Connectors.Qdrant" Version="1.68.0-preview" />
-    <PackageReference Include="System.Net.Http.Json" Version="10.0.0" />
+    <PackageReference Include="Microsoft.SemanticKernel" Version="1.78.0" />
+    <PackageReference Include="Qdrant.Client" Version="1.13.0" />
   </ItemGroup>
 
   <ItemGroup>

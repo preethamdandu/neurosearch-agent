@@ -1,23 +1,39 @@
-using Microsoft.SemanticKernel;
-using Microsoft.SemanticKernel.Connectors.Qdrant;
-using Microsoft.SemanticKernel.Memory;
 using System.ComponentModel;
+using System.Net.Http.Json;
+using System.Text.Json;
+using Microsoft.SemanticKernel;
+using Qdrant.Client;
+using Qdrant.Client.Grpc;
 
 namespace NeuroSearch.Plugins;
 
 /// <summary>
-/// Vector memory plugin for long-term semantic storage using Qdrant
-/// Enables RAG (Retrieval Augmented Generation) capabilities
+/// Vector memory plugin for long-term semantic storage using Qdrant + Ollama embeddings.
 /// </summary>
 public class VectorMemoryPlugin
 {
-    private readonly ISemanticTextMemory _memory;
+    private readonly QdrantClient _qdrant;
+    private readonly HttpClient _http;
     private readonly string _collectionName;
+    private readonly string _embeddingModel;
+    private readonly string _ollamaEndpoint;
+    private readonly ulong _vectorSize;
+    private bool _collectionReady;
 
-    public VectorMemoryPlugin(ISemanticTextMemory memory, string collectionName = "neurosearch-memory")
+    public VectorMemoryPlugin(
+        QdrantClient qdrant,
+        HttpClient http,
+        string ollamaEndpoint,
+        string embeddingModel = "nomic-embed-text",
+        string collectionName = "neurosearch-memory",
+        ulong vectorSize = 768)
     {
-        _memory = memory ?? throw new ArgumentNullException(nameof(memory));
+        _qdrant = qdrant ?? throw new ArgumentNullException(nameof(qdrant));
+        _http = http ?? throw new ArgumentNullException(nameof(http));
+        _ollamaEndpoint = ollamaEndpoint.TrimEnd('/');
+        _embeddingModel = embeddingModel;
         _collectionName = collectionName;
+        _vectorSize = vectorSize;
     }
 
     [KernelFunction]
@@ -33,22 +49,31 @@ public class VectorMemoryPlugin
             return "Error: Cannot save empty text to memory";
 
         Console.ForegroundColor = ConsoleColor.Magenta;
-        Console.WriteLine($"[💾 MemoryPlugin] Saving to memory: {text.Substring(0, Math.Min(60, text.Length))}...");
+        Console.WriteLine($"[MemoryPlugin] Saving: {text.Substring(0, Math.Min(60, text.Length))}...");
         Console.ResetColor();
 
         try
         {
-            var id = Guid.NewGuid().ToString();
+            await EnsureCollectionAsync(cancellationToken);
+            var vector = await EmbedAsync(text, cancellationToken);
+            var id = (ulong)(DateTime.UtcNow.Ticks ^ Random.Shared.NextInt64());
 
-            await _memory.SaveInformationAsync(
-                collection: _collectionName,
-                text: text,
-                id: id,
-                description: metadata,
-                cancellationToken: cancellationToken);
+            var point = new PointStruct
+            {
+                Id = id,
+                Vectors = vector,
+                Payload =
+                {
+                    ["text"] = text,
+                    ["metadata"] = metadata ?? string.Empty,
+                    ["created_at"] = DateTime.UtcNow.ToString("O")
+                }
+            };
+
+            await _qdrant.UpsertAsync(_collectionName, new[] { point }, cancellationToken: cancellationToken);
 
             Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine($"[✓ MemoryPlugin] Saved with ID: {id.Substring(0, 8)}...");
+            Console.WriteLine($"[MemoryPlugin] Saved id={id}");
             Console.ResetColor();
 
             return $"Successfully saved to memory. ID: {id}";
@@ -66,8 +91,8 @@ public class VectorMemoryPlugin
         string query,
         [Description("Number of results to return (default: 3, max: 10)")]
         int limit = 3,
-        [Description("Minimum relevance score (0.0 to 1.0, default: 0.7). Higher means more strict.")]
-        double minRelevance = 0.7,
+        [Description("Minimum relevance score (0.0 to 1.0, default: 0.5). Higher means more strict.")]
+        double minRelevance = 0.5,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(query))
@@ -77,34 +102,35 @@ public class VectorMemoryPlugin
         minRelevance = Math.Clamp(minRelevance, 0.0, 1.0);
 
         Console.ForegroundColor = ConsoleColor.Magenta;
-        Console.WriteLine($"[🧠 MemoryPlugin] Searching memory for: '{query}'");
+        Console.WriteLine($"[MemoryPlugin] Searching: '{query}'");
         Console.ResetColor();
 
         try
         {
-            var results = _memory.SearchAsync(
-                collection: _collectionName,
-                query: query,
-                limit: limit,
-                minRelevanceScore: minRelevance,
+            await EnsureCollectionAsync(cancellationToken);
+            var vector = await EmbedAsync(query, cancellationToken);
+
+            var results = await _qdrant.SearchAsync(
+                _collectionName,
+                vector,
+                limit: (ulong)limit,
+                scoreThreshold: (float)minRelevance,
                 cancellationToken: cancellationToken);
 
-            var memories = new List<string>();
-            await foreach (var result in results)
-            {
-                memories.Add($"[Relevance: {result.Relevance:F2}] {result.Metadata.Text}");
-            }
-
-            if (memories.Count == 0)
+            if (results.Count == 0)
             {
                 Console.ForegroundColor = ConsoleColor.Yellow;
-                Console.WriteLine($"[⚠ MemoryPlugin] No relevant memories found");
+                Console.WriteLine("[MemoryPlugin] No relevant memories found");
                 Console.ResetColor();
                 return "No relevant memories found. Try lowering the minRelevance threshold or rephrasing your query.";
             }
 
+            var memories = results
+                .Select(r => $"[Relevance: {r.Score:F2}] {r.Payload["text"].StringValue}")
+                .ToList();
+
             Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine($"[✓ MemoryPlugin] Found {memories.Count} relevant memories");
+            Console.WriteLine($"[MemoryPlugin] Found {memories.Count} relevant memories");
             Console.ResetColor();
 
             return $"Found {memories.Count} relevant memories:\n\n{string.Join("\n\n", memories)}";
@@ -119,19 +145,63 @@ public class VectorMemoryPlugin
     [Description("Retrieves the total number of items currently stored in memory. Useful for checking memory status.")]
     public async Task<string> GetMemoryStatsAsync(CancellationToken cancellationToken = default)
     {
-        Console.ForegroundColor = ConsoleColor.Magenta;
-        Console.WriteLine($"[📊 MemoryPlugin] Fetching memory statistics...");
-        Console.ResetColor();
-
         try
         {
-            // Note: This is a simplified version
-            // In production, you'd use Qdrant's collection info API
-            return "Memory statistics available via Qdrant dashboard at http://localhost:6333/dashboard";
+            await EnsureCollectionAsync(cancellationToken);
+            var info = await _qdrant.GetCollectionInfoAsync(_collectionName, cancellationToken);
+            return $"Collection '{_collectionName}': {info.PointsCount} points, status={info.Status}";
         }
         catch (Exception ex)
         {
             return $"Failed to retrieve stats: {ex.Message}";
         }
+    }
+
+    private async Task EnsureCollectionAsync(CancellationToken cancellationToken)
+    {
+        if (_collectionReady)
+            return;
+
+        var exists = await _qdrant.CollectionExistsAsync(_collectionName, cancellationToken);
+        if (!exists)
+        {
+            await _qdrant.CreateCollectionAsync(
+                _collectionName,
+                new VectorParams
+                {
+                    Size = _vectorSize,
+                    Distance = Distance.Cosine,
+                    OnDisk = false
+                },
+                cancellationToken: cancellationToken);
+        }
+
+        _collectionReady = true;
+    }
+
+    private async Task<float[]> EmbedAsync(string text, CancellationToken cancellationToken)
+    {
+        using var response = await _http.PostAsJsonAsync(
+            $"{_ollamaEndpoint}/api/embeddings",
+            new { model = _embeddingModel, prompt = text },
+            cancellationToken);
+
+        response.EnsureSuccessStatusCode();
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
+
+        if (!doc.RootElement.TryGetProperty("embedding", out var embeddingElement))
+            throw new InvalidOperationException("Ollama embeddings response missing 'embedding' field.");
+
+        var vector = new float[embeddingElement.GetArrayLength()];
+        var i = 0;
+        foreach (var value in embeddingElement.EnumerateArray())
+            vector[i++] = value.GetSingle();
+
+        if ((ulong)vector.Length != _vectorSize)
+            throw new InvalidOperationException($"Expected {_vectorSize}-dim embeddings, got {vector.Length}. Check EmbeddingModel/VectorSize config.");
+
+        return vector;
     }
 }

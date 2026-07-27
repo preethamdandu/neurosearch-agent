@@ -1,0 +1,18 @@
+<Project>
+  <!--
+    Repo-wide NuGet security audit gate.
+    Any moderate+ advisory in direct or transitive packages will fail the build.
+    This enforces the "security-hardened" claim made in the project README.
+    Advisory levels: low < moderate < high < critical
+  -->
+  <PropertyGroup>
+    <NuGetAudit>true</NuGetAudit>
+    <NuGetAuditMode>all</NuGetAuditMode>
+    <NuGetAuditLevel>moderate</NuGetAuditLevel>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!-- NU1901=low, NU1902=moderate, NU1903=high, NU1904=critical -->
+    <WarningsAsErrors>$(WarningsAsErrors);NU1901;NU1902;NU1903;NU1904</WarningsAsErrors>
+  </PropertyGroup>
+</Project>

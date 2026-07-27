@@ -239,7 +239,8 @@ public class SecurityTests
 
         // Assert
         Assert.True(result.IsValid);
-        Assert.DoesNotContain("\0", result.Value); // Null bytes removed
+        // Use char overload: Assert.DoesNotContain("\0", string) can false-positive on some xUnit versions
+        Assert.DoesNotContain('\0', result.Value);
         Assert.Equal("normal search query", result.Value); // Whitespace normalized
     }
 
