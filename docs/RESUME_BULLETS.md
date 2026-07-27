@@ -41,10 +41,12 @@ natural language intent — bridging AI reasoning with deterministic code execut
 Engineered long-term semantic memory using Qdrant (HNSW indexing) with
 nomic-embed-text embeddings; benchmarked Qdrant search p95 at 0.93 ms (10K vectors)
 and 5.3 ms (100K vectors); end-to-end RAG (embed + search) p95 ≈ 23 ms on a warm
-local model (see MEASUREMENTS.txt).
+local model. Retrieval quality on 50 independently labeled title→doc pairs:
+recall@1/5/10 = 1.0, MRR@10 = 1.0 at hnsw_ef=128 (labels structural — not from
+the embedder under test; see MEASUREMENTS.txt §12).
 ```
 **Why it works**: Shows database expertise, performance measurement rigour, and RAG
-knowledge with real, reproducible numbers.
+knowledge with real, reproducible numbers — latency coupled to an accuracy number.
 
 ---
 
@@ -52,8 +54,8 @@ knowledge with real, reproducible numbers.
 ```
 Published with .NET Native AOT: measured startup averaged 48 ms vs 99 ms JIT
 (~52% faster), peak RSS 24 MB vs 64 MB (~62% less) on macOS arm64. Multi-stage
-Dockerfile produces a 51.2 MB linux-arm64 image (STARTUP_MS=23 in container),
-using mcr.microsoft.com/dotnet/nightly/runtime-deps:chiseled as the base.
+Dockerfile produces a ~51 MB linux-arm64 image (STARTUP_MS=32 in container this
+session), using mcr.microsoft.com/dotnet/nightly/runtime-deps:chiseled as the base.
 ```
 **Why it works**: Quantifiable, reproducible performance data with honest
 measurement methodology.
@@ -62,17 +64,18 @@ measurement methodology.
 
 ### Option 5: Security Hardening (Best for Security / Regulated Industries)
 ```
-Enforced OWASP-oriented security across input AND content boundaries: 81
+Enforced OWASP-oriented security across input AND content boundaries: 97
 automated tests (43 input validation + LLM01 content-boundary suite). Not all
-are distinct attack defenses — some assert pipeline wrapping only (documented
-in MEASUREMENTS.txt §11). Happy-path research→save works under defenses;
-mutation matrix covers each control; benign corpus heuristic FP 0/40 after
-narrowing (was 29/40). Spotlighting ASR probe 2/20 ON vs 12/20 OFF on
-qwen3.5:9b (n=20, not significant). Cleared GHSA-2ww3-72rp-wpp4 (SK 1.78.0).
-Defense-in-depth — not injection-proof.
+are distinct attack defenses — some assert pipeline wrapping or extraction
+canaries only (MEASUREMENTS.txt §11). Exfil deny path is host allowlist /
+provenance (not fixture-shaped hostname patterns). Happy-path research→save
+works; mutation matrix covers each control; benign corpus heuristic FP 0/40.
+Layered ASR on qwen3.5:9b: 12/20 → 1/20 → 0/20 (spotlight± × policy±, 3 repeats;
+McNemar A↔B p≈0.001). Multi-hop follow of scraped links blocked by design.
+Cleared GHSA-2ww3-72rp-wpp4 (SK 1.78.0). Defense-in-depth — not injection-proof.
 ```
 **Why it works**: Shows security posture with honest test taxonomy, FP rate,
-and measured soft-control effect — without overclaiming.
+structural exfil control, and measured soft-control effect — without overclaiming.
 
 ---
 
