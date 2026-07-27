@@ -114,23 +114,42 @@ public class WebScraperPlugin
                         doc.DocumentNode.SelectSingleNode("//div[contains(@class, 'content')]") ??
                         doc.DocumentNode;
 
+        var content = new StringBuilder();
+
+        // Title and meta description are part of the extracted surface (attack vectors if injected)
+        var title = doc.DocumentNode.SelectSingleNode("//title")?.InnerText;
+        if (!string.IsNullOrWhiteSpace(title) && title.Trim().Length > 10)
+        {
+            content.AppendLine(HtmlEntity.DeEntitize(title.Trim()));
+            content.AppendLine();
+        }
+        var meta = doc.DocumentNode.SelectSingleNode("//meta[@name='description']")
+            ?.GetAttributeValue("content", null);
+        if (!string.IsNullOrWhiteSpace(meta) && meta.Trim().Length > 10)
+        {
+            content.AppendLine(HtmlEntity.DeEntitize(meta.Trim()));
+            content.AppendLine();
+        }
+
         var textNodes = contentNode.SelectNodes(".//p | .//h1 | .//h2 | .//h3 | .//li");
 
-        if (textNodes == null || textNodes.Count == 0)
+        if ((textNodes == null || textNodes.Count == 0) && content.Length == 0)
             return "Could not extract meaningful content from this URL. The page may require JavaScript or use an unsupported format.";
 
-        var content = new StringBuilder();
-        foreach (var node in textNodes)
+        if (textNodes != null)
         {
-            var text = HtmlEntity.DeEntitize(node.InnerText).Trim();
-            if (!string.IsNullOrWhiteSpace(text) && text.Length > 10)
+            foreach (var node in textNodes)
             {
-                content.AppendLine(text);
-                content.AppendLine();
-            }
+                var text = HtmlEntity.DeEntitize(node.InnerText).Trim();
+                if (!string.IsNullOrWhiteSpace(text) && text.Length > 10)
+                {
+                    content.AppendLine(text);
+                    content.AppendLine();
+                }
 
-            if (content.Length > ContentSanitizer.MaxContentLength)
-                break;
+                if (content.Length > ContentSanitizer.MaxContentLength)
+                    break;
+            }
         }
 
         var result = content.ToString().Trim();

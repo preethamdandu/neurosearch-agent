@@ -166,7 +166,6 @@ public sealed class InjectionSessionState
             if (_userAuthorizedUrls.Contains(url))
                 return true;
 
-            // Allow if any authorized URL is a prefix / the argument URL contains an authorized host path from user
             foreach (var allowed in _userAuthorizedUrls)
             {
                 if (url.StartsWith(allowed, StringComparison.OrdinalIgnoreCase) ||
@@ -174,10 +173,20 @@ public sealed class InjectionSessionState
                     return true;
             }
 
-            // Also allow if the raw URL string appears in the last user message
             if (!string.IsNullOrEmpty(_lastUserMessage) &&
                 _lastUserMessage.Contains(url, StringComparison.OrdinalIgnoreCase))
                 return true;
+
+            // Same-origin as a user-authorized URL (asset paths on that host are OK)
+            if (Uri.TryCreate(url, UriKind.Absolute, out var candidate))
+            {
+                foreach (var allowed in _userAuthorizedUrls)
+                {
+                    if (Uri.TryCreate(allowed, UriKind.Absolute, out var allowedUri) &&
+                        string.Equals(candidate.Host, allowedUri.Host, StringComparison.OrdinalIgnoreCase))
+                        return true;
+                }
+            }
 
             return false;
         }
@@ -205,16 +214,21 @@ public sealed class InjectionSessionState
             if (string.IsNullOrEmpty(argumentBlob))
                 return false;
 
-            // High-entropy long query-string payloads are a common exfil channel
-            if (argumentBlob.Contains('?', StringComparison.Ordinal) &&
-                EstimateEntropy(argumentBlob) > 4.5 && argumentBlob.Length > 80)
-                return true;
-
+            // Context leak: a non-URL trusted substring appears inside the outbound args
             foreach (var trusted in _trustedSubstrings)
             {
-                if (trusted.Length >= 24 && argumentBlob.Contains(trusted, StringComparison.Ordinal))
+                if (trusted.Length < 24)
+                    continue;
+                // User messages often contain the authorized URL itself — that is NOT exfil
+                if (trusted.Contains("http://", StringComparison.OrdinalIgnoreCase) ||
+                    trusted.Contains("https://", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if (argumentBlob.Contains(trusted, StringComparison.Ordinal))
                     return true;
             }
+
+            // High-entropy query alone is common (JWT, UTM, signed CDN) — not sufficient.
+            // Only treat as exfil when the blob also embeds a sensitive context marker.
             return false;
         }
     }

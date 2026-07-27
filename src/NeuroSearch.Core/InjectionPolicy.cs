@@ -191,8 +191,9 @@ public sealed class InjectionPolicy
         s.Length <= max ? s : s[..max] + "...";
 
     /// <summary>
-    /// Detect exfil URL shapes across query, path, subdomain, and fragment —
-    /// not querystring-only (which would be a regex-shaped blind spot).
+    /// Detect exfil URL shapes across query, path, subdomain, and fragment.
+    /// Intentionally narrow on non-attacker hosts to avoid CDN/UTM false positives;
+    /// attacker.* canaries and context-substring checks carry the rest.
     /// </summary>
     internal static bool LooksLikeExfilUrlShape(string url)
     {
@@ -201,7 +202,6 @@ public sealed class InjectionPolicy
 
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
         {
-            // Still check host-ish attacker markers in raw string
             return url.Contains("attacker.", StringComparison.OrdinalIgnoreCase) &&
                    (url.Contains('?', StringComparison.Ordinal) ||
                     url.Contains('#', StringComparison.Ordinal) ||
@@ -213,42 +213,27 @@ public sealed class InjectionPolicy
         var query = uri.Query ?? "";
         var fragment = uri.Fragment ?? "";
 
-        // Known canary attacker hosts used in tests / demos
         var isAttackerHost = host.Contains("attacker.", StringComparison.OrdinalIgnoreCase) ||
                              host.EndsWith(".attacker.test", StringComparison.OrdinalIgnoreCase) ||
                              host.Equals("attacker.test", StringComparison.OrdinalIgnoreCase);
 
-        if (isAttackerHost)
-        {
-            // Any non-empty query, fragment, or long path token on attacker host is suspect
-            if (!string.IsNullOrEmpty(query) && query.Length > 1)
-                return true;
-            if (!string.IsNullOrEmpty(fragment) && fragment.Length > 1)
-                return true;
-            if (HasLongBase64ishToken(path.Trim('/')))
-                return true;
-            // subdomain exfil: <token>.attacker.test
-            var labels = host.Split('.', StringSplitOptions.RemoveEmptyEntries);
-            if (labels.Length >= 3 && HasLongBase64ishToken(labels[0]))
-                return true;
-            // bare attacker.test with encoded path segment
-            if (path.Length > 8)
-                return true;
-        }
+        if (!isAttackerHost)
+            return false; // non-attacker hosts: rely on IsUrlAuthorized + LooksLikeContextExfiltration
 
-        // Subdomain exfil even without "attacker" name: long base64 label + suspicious TLD pairing
-        // kept narrow — only when a label looks like base64 payload (>=16 chars, high entropy charset)
-        var hostLabels = host.Split('.', StringSplitOptions.RemoveEmptyEntries);
-        if (hostLabels.Length >= 3 && HasLongBase64ishToken(hostLabels[0]) && hostLabels[0].Length >= 16)
+        // attacker host: any query, fragment, long path token, or base64 subdomain label
+        if (!string.IsNullOrEmpty(query) && query.Length > 1)
+            return true;
+        if (!string.IsNullOrEmpty(fragment) && fragment.Length > 1)
             return true;
 
-        // Fragment exfil with high-entropy payload
-        if (fragment.Length > 20 && HasLongBase64ishToken(fragment.TrimStart('#')))
-            return true;
-
-        // Path-segment exfil: single long base64-ish path segment
         var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        if (segments.Any(s => s.Length >= 16 && HasLongBase64ishToken(s)))
+        if (segments.Any(s => s.Length >= 8 && HasLongBase64ishToken(s)))
+            return true;
+        if (path.Length > 8 && segments.Length > 0)
+            return true;
+
+        var labels = host.Split('.', StringSplitOptions.RemoveEmptyEntries);
+        if (labels.Length >= 3 && HasLongBase64ishToken(labels[0]))
             return true;
 
         return false;

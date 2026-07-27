@@ -20,4 +20,8 @@
     <ProjectReference Include="..\..\src\NeuroSearch.Core\NeuroSearch.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="Fixtures/**/*" CopyToOutputDirectory="PreserveNewest" LinkBase="Fixtures" />
+  </ItemGroup>
+
 </Project>
