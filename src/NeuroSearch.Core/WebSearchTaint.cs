@@ -2,8 +2,9 @@ namespace NeuroSearch.Core;
 
 /// <summary>
 /// Centralized taint marking for ALL search providers.
-/// Providers return raw hits; this layer marks Untrusted + spotlight.
-/// A future provider cannot skip provenance by forgetting a WrapUntrusted call.
+/// Providers return raw hits (and optional synthesized <see cref="WebSearchProviderResult.ProviderAnswer"/>);
+/// this layer alone owns Untrusted + spotlight + sanitize + length cap so no provider
+/// can forget — including future backends with LLM-synthesized answer fields.
 /// </summary>
 public static class WebSearchTaint
 {
@@ -21,7 +22,9 @@ public static class WebSearchTaint
         var parts = new List<string>();
         if (!string.IsNullOrWhiteSpace(result.ProviderAnswer))
         {
-            // Tavily (and similar) may return a top-level answer — same threat as snippets.
+            // Synthesized answers are NOT safer than snippets — they are LLM-composed
+            // FROM ranked results and are a stronger injection carrier (look first-party).
+            // Same threat model as RawContent / scrape body. Not Tavily-specific.
             parts.Add($"ProviderAnswer:\n{result.ProviderAnswer}");
         }
 
@@ -47,6 +50,9 @@ public static class WebSearchTaint
 
         var formatted = string.Join("\n\n", parts);
         var origin = $"{result.ProviderName}:search:hop{hopDepth}:{result.Query}";
+        // WrapUntrusted: length cap → ContentSanitizer (ZW/bidi/NFKC) → delimiter
+        // neutralize → spotlight → ContentProvenance.Untrusted. Applies to ProviderAnswer
+        // and hits alike because both are in |formatted|.
         var tainted = session.Spotlight.WrapUntrusted(formatted, origin, session.Defenses);
         session.MarkUntrusted(origin);
 
