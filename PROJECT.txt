@@ -1,0 +1,316 @@
+================================================================================
+NeuroSearch Agent — PROJECT.txt
+Definitive plain-text description. Source of truth: MEASUREMENTS.txt.
+Every factual claim below cites a MEASUREMENTS section. If it is not in that
+file, it does not belong here.
+================================================================================
+Date of write: 2026-07-27 (from MEASUREMENTS session dates)
+Machine context for cited numbers: Preethams-MacBook-Pro.local, macOS arm64
+  (MEASUREMENTS header)
+
+
+1) WHAT THIS IS
+================================================================================
+
+NeuroSearch is a local-first autonomous research agent written in C# / .NET 10.
+A user asks a research question in natural language; the agent plans tool use
+via Microsoft Semantic Kernel auto function calling, searches the web, optionally
+scrapes provider-authorized pages, embeds findings, and stores them in Qdrant for
+later retrieval (MEASUREMENTS §1, §10, §11, §14). Chat and embeddings run on
+Ollama (default chat model qwen3.5:9b; embeddings nomic-embed-text, 768-dim).
+Long-term memory is Qdrant over gRPC. There is no cloud LLM in the measured setup
+(MEASUREMENTS §4, §10, §14).
+
+The project exists to exercise an agentic Semantic Kernel stack under a measured
+OWASP LLM01 content-boundary posture: untrusted web text reaches a model that can
+call tools, so defenses are structural and counted honestly — including demotions
+when a control failed scrutiny (MEASUREMENTS §11). The only required external
+network dependency beyond local infra is the web search provider (Tavily by
+default, Serper selectable) (MEASUREMENTS §14).
+
+
+2) WHAT IT ACTUALLY DOES (the research loop)
+================================================================================
+
+Typical loop (MEASUREMENTS §11, §14):
+
+  1. User asks a question.
+  2. WebSearch issues a provider search (Search:Provider = tavily by default,
+     basic depth; Serper via --provider / config) (MEASUREMENTS §14).
+  3. Results (snippets, optional RawContent, optional ProviderAnswer) are marked
+     Untrusted and spotlight-wrapped in WebSearchTaint (MEASUREMENTS §14).
+  4. The agent may scrape only URLs that are user-authorized or exact-match
+     provider-authorized (MEASUREMENTS §11, §14). Scraped HTML is Untrusted and
+     spotlit the same way (MEASUREMENTS §11).
+  5. VectorMemory embeds text with Ollama nomic-embed-text and upserts to Qdrant,
+     tagging provenance=untrusted + origin when untrusted content is in context
+     (MEASUREMENTS §1, §11).
+  6. Later turns can SearchMemory for prior findings (MEASUREMENTS §1).
+
+Multi-hop: WebSearch.ResearchDeeperAsync issues a NEW search for a topic or
+citation name. Fetchable URLs come from the provider ranking, not from links
+found inside scraped page text — following scraped links remains blocked because
+those URLs are attacker-controlled data (MEASUREMENTS §11, §14).
+
+
+3) ARCHITECTURE
+================================================================================
+
+Runtime stack (MEASUREMENTS §1, §10, §14):
+  - .NET 10; Microsoft Semantic Kernel 1.78.0; Ollama connector 1.78.0-alpha
+  - Auto function calling (FunctionChoiceBehavior), not a separate planner package
+  - Plugins: WebSearch, WebScraper, VectorMemory
+  - IWebSearchProvider with SerperSearchProvider and TavilySearchProvider;
+    trust marking is centralized in WebSearchTaint (MEASUREMENTS §14)
+  - Ollama: chat qwen3.5:9b; embeddings nomic-embed-text (768-dim)
+  - Qdrant: Host/GrpcPort from appsettings; VectorSize 768; HnswEf 16;
+    Quantization none (MEASUREMENTS §13)
+
+Native AOT (MEASUREMENTS §1, §5, §6, §10):
+  - PublishAot=false by default for day-to-day builds; enable at publish/Docker
+  - TrimmerRootAssembly for Plugins, Core, Semantic Kernel, OllamaSharp,
+    Microsoft.Extensions.AI*
+  - PreservePluginSurface / DynamicDependency so [KernelFunction] methods survive
+    trimming (without this, AOT crashed: no KernelFunction methods)
+  - Config base path: AppContext.BaseDirectory
+  - JsonSerializerIsReflectionEnabledByDefault=true (required for SK/Ollama chat)
+  - Flags: --startup-benchmark, --smoke-test, --live-verify
+
+
+4) SECURITY MODEL
+================================================================================
+
+Threat model (MEASUREMENTS §11): WebScraper/WebSearch return attacker-influenced
+text into chat history of an LLM with auto function calling over WebSearch,
+WebScraper, and VectorMemory. Hostile content can try to override goals, poison
+VectorMemory.Save, exfiltrate via outbound scrapes, or chain poison-then-trigger.
+
+Six enforcing controls (MEASUREMENTS §11 mutation matrix):
+
+  1. ContentSanitizer — strip zero-width / bidi, NFKC, length cap 2500.
+     Does not decide allow/deny of tool calls.
+  2. DelimiterNeutralizer — neutralize forged spotlight close tags / session id.
+     Does not block tools by itself.
+  3. SpotlightWrapper — wrap untrusted bodies in per-session
+     <untrusted_web_content id="…"> markers; system prompt treats markers as DATA.
+     Soft control: measured ASR reduction; not a hard gate alone.
+  4. TaintedSinkRule — block VectorMemory.Save while untrusted is in context unless
+     the user requested a memory save this turn OR text is grounded in the user
+     message; payload still tagged provenance=untrusted when allowed.
+  5. Allowlist — tools must be known; outbound scrape hosts/URLs must be
+     user-authorized or exact provider-authorized (MEASUREMENTS §11, §14).
+  6. Budget — MaxToolCallsPerTurn=8, MaxToolCallsPerSession=40
+     (MEASUREMENTS §11).
+
+ExfilCheck was counted as a seventh defense, then demoted to advisory (logged,
+non-enforcing) after tests showed it matched fixture domains (attacker.*) while
+the host allowlist did the real deny work. Defense count went 7 → 6 on purpose
+(MEASUREMENTS §11).
+
+Provenance flow (MEASUREMENTS §11, §14):
+  scraper/search → WrapUntrusted (Untrusted) → MarkUntrusted in session →
+  optional Save with provenance=untrusted + origin_url (+ research_hop) in Qdrant →
+  retrieval surfaces provenance tags.
+
+
+5) WHAT IS MEASURED
+================================================================================
+
+Injection defense (MEASUREMENTS §2, §11, §14):
+  - Automated suite: most recently recorded full run Passed 124/124
+    (MEASUREMENTS §14). Earlier §2 recorded 97 after the exfil/ASR/retrieval
+    session — count rose as tests were added, not because 97 distinct “attack
+    defenses” existed.
+  - Layered ASR (qwen3.5:9b, temp 0, 3 repeats, single machine):
+      Baseline (n=20, scrape-path): A=12/20 B=1/20 C=0/20;
+      McNemar A↔B p≈0.00098 (MEASUREMENTS §11).
+      With search-path + provider_answer (n=24): A=16/24 B=1/24 C=0/24
+      (MEASUREMENTS §14). Effect size is the A→B rate change at that n;
+      a smaller p at larger n is not stronger evidence of effect size
+      (MEASUREMENTS §14).
+  - Benign corpus heuristic FP 0/40; UNAUTHORIZED_BLOCKS=65 (MEASUREMENTS §11).
+  - Policy microbench and E2E-with-policy commands exist (MEASUREMENTS §8, §11).
+
+Retrieval quality (MEASUREMENTS §12, §13):
+  - 50 paraphrased queries, 100K synthetic distractors + 50 labeled docs,
+    HNSW engaged (indexed_vectors_count>0): recall@1=0.88, @5=0.96, @10=0.98,
+    MRR@10≈0.92 at ef=128 (MEASUREMENTS §12).
+  - ef=16 matched exact top-5 on 50/50; chosen default (MEASUREMENTS §13).
+
+Search latency (MEASUREMENTS §3, §3b):
+  - Synthetic Qdrant cosine: p95 ≈ 0.93 ms @10K; p95 ≈ 5.3 ms @100K
+    (200 queries, local Docker).
+
+E2E RAG latency (MEASUREMENTS §4):
+  - Real nomic-embed-text + Qdrant: E2E p50 ≈ 21 ms, p95 ≈ 23 ms (warm model,
+    macOS arm64 CPU Ollama). Embed p95 ≈ 20 ms; search split p95 ≈ 3.6 ms.
+
+AOT startup / memory (MEASUREMENTS §5):
+  - macOS arm64 self-contained: startup avg 48 ms AOT vs 99 ms JIT;
+    peak RSS avg ~24 MB vs ~64 MB (~52% faster, ~62% less RSS).
+
+Container (MEASUREMENTS §6, §14):
+  - Image ~51.2–51.3 MB (docker images); container startup 5-run avg 8.8 ms
+    (MEASUREMENTS §6). SMOKE_PASS via host.docker.internal (MEASUREMENTS §14).
+
+Live web search (MEASUREMENTS §14):
+  - --live-verify serper and tavily: LIVE_SEARCH_PASS, 5 results each,
+    provenance held, query “transformer architecture self-attention”.
+
+
+6) WHAT IS NOT MEASURED / KNOWN LIMITS
+================================================================================
+
+Written without hedging (MEASUREMENTS §9, §10, §11, §12, §13, §14):
+
+  - No third-party adversarial red-team (MEASUREMENTS §9).
+  - ASR is single model (qwen3.5:9b) and single machine; cross-model
+    generalization untested (MEASUREMENTS §11).
+  - Retrieval eval is 50 real labeled pairs among near-orthogonal synthetic
+    distractors; recall on a harder real-document corpus will be lower
+    (MEASUREMENTS §12, §13 DO NOT).
+  - footer_include still succeeds under spotlighting (B survivor)
+    (MEASUREMENTS §11, §14).
+  - An adversary who ranks for a query the agent chooses can steer the next
+    ResearchDeeper hop; re-search does not remove that influence
+    (MEASUREMENTS §11, §14).
+  - Not deployed to Azure or any cloud; Dockerfile containerises locally only
+    (MEASUREMENTS §6, §9, §10).
+  - SK Ollama connector remains *-alpha; AOT publish still emits IL2026/IL3050
+    trim warnings on Http.Json helpers (runtime OK after roots)
+    (MEASUREMENTS §10).
+  - Unit tests passing ≠ penetration test passed (MEASUREMENTS §2).
+  - Not injection-proof (MEASUREMENTS §11).
+
+
+7) DESIGN DECISIONS AND WHY
+================================================================================
+
+ef=16 (MEASUREMENTS §13):
+  ANN top-5 identical to exact on 50/50 queries; recall flat across ef 16→256
+  while search p95 rose ~2.1→4.9 ms on the retrieval collection. Ollama embed
+  (~18 ms) already dominates search (~2–3 ms), so the live lever was ef.
+  Default Qdrant:HnswEf=16.
+
+Quantization evaluated and REJECTED (MEASUREMENTS §13):
+  At 100K × 768, float32 vectors are ~293 MB theoretical; collection dir ~395M.
+  Scalar/binary setups did not earn a clean process-RSS win while keeping
+  originals for rescoring; SQ with originals on_disk dipped recall@5 to 0.94.
+  Default Quantization=none. Memory is not the binding constraint at this scale;
+  revisit above roughly ~1M vectors if RSS becomes the problem.
+
+Re-search over link-following (MEASUREMENTS §11, §14):
+  URLs in scraped HTML are attacker-controlled. ResearchDeeper asks the provider
+  for a new ranked result set instead.
+
+Exact-URL authorization, not host or prefix (MEASUREMENTS §14):
+  Prefix matching let /article authorize /article-<payload>. NormalizeUrl + exact
+  match; query/fragment variants do not auto-authorize; exfil still runs after auth.
+
+Native AOT despite trimming cost (MEASUREMENTS §1, §5, §6, §10):
+  Measured ~52% faster startup and ~62% less peak RSS on macOS; ~51 MB chiseled
+  Linux image. Required trimmer roots, PreservePluginSurface, reflection JSON,
+  and AppContext.BaseDirectory. PublishAot stays false day-to-day.
+
+
+8) BUGS FOUND BY AUDITING A GREEN TEST SUITE
+================================================================================
+
+1) Tainted-sink blocked research→save (MEASUREMENTS §11):
+   What was green: defense tests that blocked Save whenever untrusted content
+   was in context.
+   What was wrong: the agent looked “secured” by being unable to complete the
+   legitimate research→scrape→save path.
+   How caught: happy-path / P0 product break investigation; carve-out narrowed
+   to user save-intent or user-grounded text; poisoning without intent still blocks.
+
+2) ExfilCheck matched fixture domains (MEASUREMENTS §11):
+   What was green: shape/entropy “exfil” tests on attacker.* hosts.
+   What was wrong: the heuristic keyed on fixture names; plausible-host tests
+   showed the allowlist was the real deny path.
+   How caught: Disabling_Advisory_ExfilCheck_Alone_Fails_No_Enforcement_Tests;
+   demoted ExfilCheck to advisory; count 7 → 6.
+
+3) ef sweep measured brute-force search (MEASUREMENTS §12):
+   What was green: an early N=50 “ef curve” with impressive-looking numbers.
+   What was wrong: indexed_vectors_count=0 (below indexing_threshold) — exact
+   search, not HNSW.
+   How caught: curl collection status; table invalidated and deleted; rebuilt
+   eval with 100K distractors and index gate.
+
+4) Provider URL prefix authorization (MEASUREMENTS §14):
+   What was green: provider URLs became scrape-authorized after search.
+   What was wrong: StartsWith matching meant authorizing …/article also
+   authorized …/article/<payload> (path-extension hole).
+   How caught: trust-boundary audit of AuthorizeProviderResultUrls; replaced
+   with exact NormalizeUrl match + five boundary tests.
+
+
+9) HOW TO RUN IT
+================================================================================
+
+Prerequisites (MEASUREMENTS §8):
+  docker compose up -d
+  ollama serve && ollama pull nomic-embed-text && ollama pull qwen3.5:9b
+
+Keys (MEASUREMENTS §14):
+  Dev:  dotnet user-secrets set "Tavily:ApiKey" "…" --project src/NeuroSearch.Agent
+        dotnet user-secrets set "Serper:ApiKey" "…" --project src/NeuroSearch.Agent
+  Or:   export TAVILY_API_KEY=… SERPER_API_KEY=…
+  Container: -e Tavily__ApiKey=… -e Serper__ApiKey=…
+  Never commit real keys; .env is gitignored (MEASUREMENTS BLOCKERS / §14).
+
+Commands (MEASUREMENTS §8, §14):
+
+  # Agent (JIT; PublishAot false by default)
+  dotnet run --project src/NeuroSearch.Agent -c Release
+
+  # Non-interactive
+  dotnet run --project src/NeuroSearch.Agent -c Release -- --startup-benchmark
+  dotnet run --project src/NeuroSearch.Agent -c Release -- --smoke-test
+  dotnet run --project src/NeuroSearch.Agent -c Release -- --live-verify --provider tavily
+  dotnet run --project src/NeuroSearch.Agent -c Release -- --live-verify --provider serper
+
+  # Tests (current recorded full suite: 124 — MEASUREMENTS §14)
+  dotnet test tests/NeuroSearch.Tests/NeuroSearch.Tests.csproj -c Release
+
+  # Benchmarks (see MEASUREMENTS §8 for full list)
+  dotnet run --project tools/NeuroSearch.Benchmarks -c Release -- --count 10000 --queries 200 --dim 768
+  dotnet run --project tools/NeuroSearch.Benchmarks -c Release -- --e2e --queries 200 --warmup 20 --seed-count 500 --dim 768 --model nomic-embed-text
+  dotnet run --project tools/NeuroSearch.Benchmarks -c Release -- --injection-asr --model qwen3.5:9b --repeats 3
+  bash scripts/measure-cold-start.sh
+
+  # AOT container
+  docker build -t neurosearch-agent:aot .
+  docker run --rm neurosearch-agent:aot --startup-benchmark
+  # Docker Desktop macOS smoke (MEASUREMENTS §14):
+  docker run --rm \
+    -e Ollama__Endpoint=http://host.docker.internal:11434 \
+    -e Qdrant__Host=host.docker.internal \
+    -e Tavily__ApiKey=$TAVILY_API_KEY \
+    -e Serper__ApiKey=$SERPER_API_KEY \
+    neurosearch-agent:aot --smoke-test
+
+
+10) FILE MAP
+================================================================================
+
+  MEASUREMENTS.txt     Verified metrics only — outranks all other docs
+  PROJECT.txt          This file — narrative constrained by MEASUREMENTS.txt
+  README.md            Entry point; must not contradict MEASUREMENTS / PROJECT
+  docs/RESUME_BULLETS.md   Resume language ≤ MEASUREMENTS
+  docs/INTERVIEW_PREP.md   Talk track ≤ MEASUREMENTS
+
+  src/NeuroSearch.Agent/     Host: Program.cs, appsettings, InjectionPolicyFilter
+  src/NeuroSearch.Core/      Provenance, policy, sanitizer, WebSearchTaint, session
+  src/NeuroSearch.Plugins/   WebSearch, WebScraper, VectorMemory, providers
+  tests/NeuroSearch.Tests/   Security, injection, ASR-related, retrieval fixtures
+  tools/NeuroSearch.Benchmarks/  Latency, E2E, ASR, retrieval-quality harness
+  scripts/                   measure-cold-start.sh, index-config-bench.py
+  Dockerfile                 Multi-stage Native AOT linux-arm64 image
+  docker-compose.yml         Local Qdrant
+
+
+================================================================================
+END OF PROJECT.txt — prefer MEASUREMENTS.txt for any number in dispute
+================================================================================

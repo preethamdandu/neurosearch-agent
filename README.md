@@ -1,26 +1,28 @@
 # NeuroSearch Agent
 
-A **.NET Native AOT** autonomous research agent — not another multi-gigabyte Python container.
+Local-first autonomous research agent in **C# / .NET 10** + Semantic Kernel — chat and embeddings on Ollama, memory on Qdrant, web search via Tavily (default) or Serper. Definitive description: [`PROJECT.txt`](PROJECT.txt). Every metric: [`MEASUREMENTS.txt`](MEASUREMENTS.txt).
 
-| | NeuroSearch (this repo) | Typical Python agent image |
+| | This repo (measured) | Context |
 |---|---|---|
-| Image | **~51 MB** | 800 MB–2 GB |
-| Container cold start | **~9 ms** avg (5-run) | seconds |
-| Peak RSS (macOS AOT) | **~24 MB** | hundreds of MB |
+| Docker image | **~51 MB** (§6) | chiseled linux-arm64 AOT |
+| Container cold start | **avg 8.8 ms** over 5 runs (§6) | single-run 23/32 ms were not averages |
+| Peak RSS (macOS AOT) | **~24 MB** vs ~64 MB JIT (§5) | process start → READY |
 
-Sub-millisecond Qdrant search is Qdrant's achievement. Shipping an agentic SK stack as a chiseled ~51 MB AOT binary that is ready in milliseconds is the uncommon part.
+Sub-millisecond Qdrant search figures are Qdrant’s (§3). Shipping an agentic SK stack as a ~51 MB AOT binary that reaches READY in milliseconds is the project’s packaging claim (§5–§6).
 
 ---
 
 ## Injection defense — with a measurement
 
-Most security writeups list controls. This one measured attack success on identical payloads (`qwen3.5:9b`, temp 0, 3 repeats):
+Measured attack success on identical payloads (`qwen3.5:9b`, temp 0, 3 repeats, single machine):
 
-> Spotlighting reduced attack success from **15/23 to 1/23** on identical payloads including 3 valid search-path shapes (McNemar A↔B p ≈ 0.000122, n=23). A smaller p than the prior N=20 run is **not** stronger evidence — n and discordant pairs grew. Prior baseline without search-path: 12/20→1/20. Cross-model generalization is untested.
+> **Baseline (n=20):** Spotlighting reduced attack success from **12/20 to 1/20** (McNemar exact, 11 discordant pairs, **p ≈ 0.00098**) — significant at α=0.05 (§11). Policy 1→0 is not demonstrable at n=20 (p = 1.0).
+>
+> **With search-path + ProviderAnswer payloads (n=24):** A=16/24, B=1/24, C=0/24 (§14). B held at 1. A smaller McNemar p at larger n is **not** stronger evidence of effect size — state the rates and n (§14).
 
-**Six enforcing controls** (not seven): content sanitizer, delimiter neutralizer, spotlight wrapper, tainted-sink rule, allowlist (tools **and** outbound hosts/provenance), tool-call budget. A seventh “ExfilCheck” shape heuristic was demoted to **advisory-only** after an audit showed it matched fixture domains (`attacker.*`) while the allowlist did the real work — a control count going **down** after scrutiny.
+**Six enforcing controls** (not seven): content sanitizer, delimiter neutralizer, spotlight wrapper, tainted-sink rule, allowlist (tools **and** outbound hosts/provenance), tool-call budget. ExfilCheck demoted to **advisory** after it matched fixture domains (`attacker.*`) while the allowlist did the real work — count **7 → 6** on purpose (§11).
 
-Every number above is in [`MEASUREMENTS.txt`](MEASUREMENTS.txt).
+Honest claim: measured reduction with known residual risk — **not** injection-proof (§11).
 
 ---
 
@@ -29,7 +31,8 @@ Every number above is in [`MEASUREMENTS.txt`](MEASUREMENTS.txt).
 - **C# / .NET 10** + **Semantic Kernel 1.78** auto function calling  
 - Plugins: `WebSearch`, `WebScraper`, `VectorMemory` (Qdrant + Ollama `nomic-embed-text`)  
 - Local chat via Ollama (`qwen3.5:9b` by default)  
-- Provenance taint: scraper/search → untrusted spotlight markers → memory payload `provenance=untrusted` → retrieval surfaces it  
+- Provenance: scraper/search → Untrusted + spotlight → memory `provenance=untrusted` → retrieval surfaces it (§11, §14)  
+- Multi-hop via **re-search** (`ResearchDeeperAsync`); scraped-link follow remains blocked (§11, §14)
 
 ```text
 User → SK agent → tools
@@ -50,12 +53,11 @@ User → SK agent → tools
 docker compose up -d
 # ollama serve && ollama pull nomic-embed-text && ollama pull qwen3.5:9b
 
-# API keys — user-secrets (dev) OR environment (containers; user-secrets unavailable in Docker)
+# API keys — user-secrets (dev) OR environment (containers)
 dotnet user-secrets set "Tavily:ApiKey" "tvly-..." --project src/NeuroSearch.Agent
 dotnet user-secrets set "Serper:ApiKey" "..." --project src/NeuroSearch.Agent
 # or: export TAVILY_API_KEY=... SERPER_API_KEY=...
 # or container: -e Tavily__ApiKey=... -e Serper__ApiKey=...
-# or: copy .env.example → .env (gitignored; never commit)
 
 # Run (JIT; PublishAot stays false by default)
 # Default search provider = tavily (basic depth). Override: --provider serper
@@ -67,10 +69,10 @@ dotnet run --project src/NeuroSearch.Agent -c Release -- --smoke-test
 dotnet run --project src/NeuroSearch.Agent -c Release -- --live-verify --provider tavily
 dotnet run --project src/NeuroSearch.Agent -c Release -- --live-verify --provider serper
 
-# Tests (117 as of trust-boundary audit — not “117 attack defenses”)
+# Tests (124 as of ProviderAnswer session — not “124 attack defenses”; §14)
 dotnet test tests/NeuroSearch.Tests/NeuroSearch.Tests.csproj -c Release
 
-# AOT container (Docker Desktop macOS: use host.docker.internal, not --network host)
+# AOT container (Docker Desktop macOS: host.docker.internal, not --network host)
 docker build -t neurosearch-agent:aot .
 docker run --rm neurosearch-agent:aot --startup-benchmark
 docker run --rm \
@@ -81,45 +83,38 @@ docker run --rm \
   neurosearch-agent:aot --smoke-test
 ```
 
-**Why Tavily is default:** purpose-built for LLM retrieval (clean snippets + optional `RawContent`), which reduces WebScraper calls — the main injection surface. Serper remains selectable. Search-returned content (including Tavily `answer` / `RawContent`) is still Untrusted + spotlighted. Provider URL authorization is **exact-URL** (not host-scoped).
+**Why Tavily is default:** LLM-oriented retrieval (snippets + optional `RawContent` / `answer`), which can reduce WebScraper calls — the main injection surface. Search-returned content is still Untrusted + spotlighted. Provider URL authorization is **exact-URL** (§14).
 
-More reproduce commands (ASR, retrieval quality, latency benches): see §8 / §14 of `MEASUREMENTS.txt`.
+More reproduce commands: MEASUREMENTS §8 / §14. Narrative: [`PROJECT.txt`](PROJECT.txt).
 
 ---
 
-## What I measured and what I didn't
+## What is measured and what is not
 
-Source of truth: **[`MEASUREMENTS.txt`](MEASUREMENTS.txt)** (outranks resume/interview docs).
+Source of truth: **[`MEASUREMENTS.txt`](MEASUREMENTS.txt)** (outranks resume/interview docs). Summary: **[`PROJECT.txt`](PROJECT.txt)** §§5–6.
 
 **Measured (examples):**
 
-- Spotlighting ASR 12/20 → 1/20 (McNemar p ≈ 0.00098); policy 1 → 0 not significant at n=20  
-- Benign-page exfil heuristic FP **0/40** after narrowing; 65 unauthorized-host blocks are expected  
-- Retrieval on **100K distractors + 50 paraphrased queries** with HNSW engaged (`indexed_vectors_count > 0`): recall@1=0.88, @5=0.96, @10=0.98, MRR@10≈0.92  
-- Index config: **`hnsw_ef=16`** (ANN matched exact top-5 on 50/50); **quantization=none** after scalar/binary did not win on process RSS without recall risk (§13)  
-- Qdrant synthetic search p95 ≈ 0.93 ms @10K / 5.3 ms @100K; E2E embed+search p95 ≈ 23 ms (warm local)  
-- Container image ~51 MB; startup **avg 8.8 ms** over 5 runs  
+- Spotlighting ASR 12/20 → 1/20 (McNemar p ≈ 0.00098); extended suite n=24 still B=1/24 (§11, §14)  
+- Benign-page exfil heuristic FP **0/40**; 65 unauthorized-host blocks expected (§11)  
+- Retrieval on **100K distractors + 50 paraphrased queries** with HNSW engaged: recall@1=0.88, @5=0.96, @10=0.98, MRR@10≈0.92 (§12)  
+- Index: **`hnsw_ef=16`**; **quantization=none** after scalar/binary did not win cleanly (§13)  
+- Qdrant synth p95 ≈ 0.93 ms @10K / 5.3 ms @100K; E2E embed+search p95 ≈ 23 ms warm local (§3, §4)  
+- Container ~51 MB; startup **avg 8.8 ms** over 5 runs (§6)  
+- Live `--live-verify` Serper + Tavily PASS (§14)  
 
-**Deliberate capability tradeoff:** the agent will **not** follow URLs discovered inside scraped content. Multi-hop research uses **`WebSearch.ResearchDeeperAsync`** (re-search for a topic/citation name); fetchable URLs come from the search provider, not from page text. Users can still paste a second URL to authorize a scrape.
-
-**Not claimed / not done:**
-
-- Injection-proof / red-team certified  
-- Azure production deploy  
-- Cross-model ASR generalization  
-- That an early N=50 “ef sweep” measured HNSW (it didn’t — `indexed_vectors_count` was 0; table deleted)  
-  
+**Not claimed / not done:** third-party red-team; Azure deploy; cross-model ASR; that the early N=50 ef sweep measured HNSW (`indexed_vectors_count` was 0 — invalidated, §12).
 
 ---
 
 ## Auditing a green suite found the interesting bugs
 
-Two findings came from refusing to trust a green bar:
+Four findings (detail in PROJECT.txt §8 / MEASUREMENTS §11–§14):
 
-1. **P0 product break:** a tainted-sink rule that “secured” the agent by blocking legitimate research→save. Narrowed with a user save-intent carve-out; memory-poisoning without that intent still blocks.  
-2. **ExfilCheck demotion:** the shape heuristic keyed on fixture hostnames. Plausible-host tests + allowlist enforcement replaced a fake seventh defense.
-
-That habit — measure, then demote over-claims — is the point of this repo as much as the agent itself.
+1. **Tainted-sink** blocked legitimate research→save until a user save-intent carve-out.  
+2. **ExfilCheck** matched fixture hostnames — demoted; defenses 7 → 6.  
+3. **ef sweep** ran with `indexed_vectors_count=0` (exact search) — table deleted; eval rebuilt (§12).  
+4. **Provider URL prefix auth** authorized `/article-<payload>` — fixed to exact-URL (§14).
 
 ---
 
@@ -128,6 +123,7 @@ That habit — measure, then demote over-claims — is the point of this repo as
 | File | Role |
 |---|---|
 | [`MEASUREMENTS.txt`](MEASUREMENTS.txt) | Verified metrics only |
+| [`PROJECT.txt`](PROJECT.txt) | Definitive description ≤ MEASUREMENTS |
 | [`docs/RESUME_BULLETS.md`](docs/RESUME_BULLETS.md) | Resume language ≤ MEASUREMENTS |
 | [`docs/INTERVIEW_PREP.md`](docs/INTERVIEW_PREP.md) | Talk track ≤ MEASUREMENTS |
 

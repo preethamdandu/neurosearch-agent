@@ -65,14 +65,17 @@ measurement methodology.
 
 ### Option 5: Security Hardening (Best for Security / Regulated Industries)
 ```
-Enforced OWASP-oriented security across input AND content boundaries: 97
-automated tests (43 input validation + LLM01 suite). Six enforcing controls —
-ExfilCheck demoted to advisory after an audit showed fixture-shaped matching
-(count went 7→6 on purpose). Happy-path research→save works; mutation matrix
-covers each enforcing control; benign corpus heuristic FP 0/40. Spotlighting
-ASR 12/20→1/20 on qwen3.5:9b (McNemar p≈0.00098); policy 1→0 not demonstrable
-at n=20. Multi-hop follow of scraped links blocked by design. Cleared
-GHSA-2ww3-72rp-wpp4 (SK 1.78.0). Defense-in-depth — not injection-proof.
+Enforced OWASP-oriented security across input AND content boundaries: automated
+suite (124 tests as of latest MEASUREMENTS §14; earlier §2 recorded 97 after
+exfil/ASR adds — not “124 attack defenses”). Six enforcing controls —
+ExfilCheck demoted to advisory after fixture-shaped matching (count 7→6 on
+purpose). Happy-path research→save works; mutation matrix covers each enforcing
+control; benign corpus heuristic FP 0/40. Spotlighting ASR 12/20→1/20 on
+qwen3.5:9b (McNemar p≈0.00098); with search-path payloads n=24 still B=1/24
+(§14 — do not treat a smaller p at larger n as stronger evidence). Multi-hop
+follow of scraped links blocked; re-search supported. Cleared
+GHSA-2ww3-72rp-wpp4 (SK 1.78.0). Measured reduction with known residual risk —
+not injection-proof.
 ```
 **Why it works**: Shows security posture with honest demotion, FP rate, and
 measured soft-control effect — without overclaiming.
@@ -81,13 +84,13 @@ measured soft-control effect — without overclaiming.
 
 ### Option 6: Local AI & Privacy (Best for Privacy-Sensitive Roles)
 ```
-Designed privacy-first architecture using Ollama for local LLM inference
-(qwen3.5:9b for chat, nomic-embed-text for embeddings), eliminating external
-API dependencies and enabling zero-cost, on-premises AI deployment suitable
-for data sovereignty requirements.
+Designed local-first architecture using Ollama for chat (qwen3.5:9b) and
+embeddings (nomic-embed-text), with Qdrant on-prem for vector memory. Chat and
+embeddings stay local; the only required external network dependency in the
+measured setup is the web search provider (Tavily/Serper). Suitable for
+prototyping with data-sovereignty constraints — not a claim of zero egress.
 ```
-**Why it works**: Addresses compliance, cost, and modern AI infrastructure
-concerns without overstating capabilities.
+**Why it works**: Addresses privacy and local infra without erasing the search API.
 
 ---
 
@@ -144,26 +147,29 @@ Use these ONLY if you actually did these things:
 **Short Version (Resume)**:
 ```
 Autonomous AI research agent using Microsoft Semantic Kernel with auto function
-calling, Qdrant vector memory (RAG p95 ≈ 23 ms), 43 security unit tests, and
-Native AOT — startup ~52% faster than JIT, peak RAM ~62% lower.
-Containerised: 51.2 MB Docker image, STARTUP_MS=23.
+calling, Qdrant vector memory (RAG p95 ≈ 23 ms warm local), OWASP LLM01 content-
+boundary controls with measured ASR (12/20→1/20 spotlighting; see MEASUREMENTS),
+and Native AOT — startup ~52% faster than JIT, peak RAM ~62% lower.
+Containerised: ~51 MB Docker image; container startup avg 8.8 ms (5-run).
 ```
 
 **Long Version (LinkedIn)**:
 ```
-NeuroSearch is an autonomous AI research agent implementing the ReAct pattern
-for multi-step planning. Built with Microsoft Semantic Kernel and .NET 10, it
-dynamically invokes custom C# plugins (WebSearch, WebScraper, VectorMemory)
-based on natural language intent.
+NeuroSearch is an autonomous AI research agent with Semantic Kernel auto function
+calling. Built with .NET 10, it invokes C# plugins (WebSearch, WebScraper,
+VectorMemory) from natural language. Chat/embeddings: local Ollama; memory: Qdrant.
+Web search is the external dependency (Tavily default / Serper).
 
-Measured results (see MEASUREMENTS.txt):
+Measured results (see MEASUREMENTS.txt / PROJECT.txt):
 • Qdrant HNSW search: p95 0.93 ms @ 10K / 5.3 ms @ 100K vectors (synthetic)
 • End-to-end RAG (Ollama embed + Qdrant search): E2E p95 ≈ 23 ms, warm model
 • Native AOT (macOS arm64): startup 48 ms vs 99 ms JIT (~52% faster);
   peak RSS 24 MB vs 64 MB (~62% less)
-• Docker image: 51.2 MB (linux-arm64, runtime-deps:chiseled), STARTUP_MS=23
-• 43 security unit tests (SSRF, SQL injection, XSS, rate limiting) — 43/43
+• Docker image: ~51 MB (linux-arm64, runtime-deps:chiseled); container startup
+  avg 8.8 ms over 5 runs (prefer this over single-run 23 ms lines)
+• Automated tests: 124/124 as of latest MEASUREMENTS §14 (earlier §2: 97)
 • Audit-as-error NuGet gate: build fails on any moderate+ advisory
+• Not injection-proof; not cloud-deployed
 
 All numbers are reproducible; commands in MEASUREMENTS.txt §8.
 ```

@@ -436,7 +436,8 @@ Skills:
 docker compose up -d
 # Ensure: ollama serve && ollama pull nomic-embed-text && ollama pull qwen3.5:9b
 
-# Security tests (97 expected as of 2026-07-27 exfil/ASR/retrieval session)
+# Security tests (124 expected as of ProviderAnswer session — MEASUREMENTS §14;
+# earlier §2 recorded 97 after exfil/ASR/retrieval adds)
 dotnet test tests/NeuroSearch.Tests/NeuroSearch.Tests.csproj -c Release
 
 # Qdrant latency — synthetic @ 10K

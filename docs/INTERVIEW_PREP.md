@@ -4,11 +4,15 @@ This guide prepares you to discuss NeuroSearch in technical interviews for AI En
 
 ---
 
-## 🎯 The Elevator Pitch (30 seconds)
+## The Elevator Pitch (30 seconds)
 
-> "I built an autonomous AI research agent using Microsoft Semantic Kernel that doesn't just call ChatGPT — it **plans multi-step workflows** and **executes C# code** I wrote. The agent has **long-term memory** via Qdrant vector database (end-to-end RAG p95 ≈ 23 ms on a warm local model), runs **100% locally** using Ollama for privacy, and uses **Native AOT compilation** for ~52% faster cold starts — startup 48 ms vs 99 ms JIT."
+> "I built an autonomous AI research agent using Microsoft Semantic Kernel that
+> plans tool use and executes C# plugins I wrote. It has long-term memory via
+> Qdrant (end-to-end RAG p95 ≈ 23 ms on a warm local model), runs chat and
+> embeddings locally on Ollama, uses a web search provider for live results, and
+> uses Native AOT — startup 48 ms vs 99 ms JIT (~52% faster)."
 
-> *(Numbers from MEASUREMENTS.txt — do not ad-lib other figures in an interview.)*
+> *(Numbers from MEASUREMENTS.txt — do not ad-lib. Full narrative: PROJECT.txt.)*
 
 ---
 
@@ -18,9 +22,11 @@ This guide prepares you to discuss NeuroSearch in technical interviews for AI En
 
 **Answer**:
 
-"I use Microsoft Semantic Kernel's **FunctionCallingStepwisePlanner**. Here's how it works:
+"I use Microsoft Semantic Kernel **auto function calling** (`FunctionChoiceBehavior.Auto`).
+Here's how it works in this project:
 
-1. **Function Registration**: My C# functions are decorated with `[KernelFunction]` and `[Description]` attributes. For example:
+1. **Function Registration**: C# methods are decorated with `[KernelFunction]` and
+   `[Description]`. Example:
 
 ```csharp
 [KernelFunction, Description("Searches the internet for a given query")]
@@ -28,22 +34,18 @@ public async Task<string> SearchAsync(
     [Description("The query to search for")] string query)
 ```
 
-2. **Schema Generation**: Semantic Kernel serializes these function signatures into **JSON schemas** that describe the function name, parameters, and purpose.
+2. **Schema Generation**: Semantic Kernel exposes these signatures to the model.
 
-3. **Prompt Injection**: These schemas are injected into the **system prompt** sent to the LLM (Llama-3 via Ollama).
+3. **Model**: Local Ollama chat (`qwen3.5:9b` by default — MEASUREMENTS §10).
 
-4. **LLM Output**: The LLM responds with **structured JSON** indicating which function to call and with what parameters. For example:
+4. **Invocation**: The model selects tools; the kernel invokes the C# methods and
+   feeds results back for the next step.
 
-```json
-{
-  "function": "WebSearch_SearchAsync",
-  "parameters": {"query": "Tesla stock news"}
-}
-```
+5. **Policy**: `InjectionPolicyFilter` gates tool calls (allowlist, budget,
+   tainted-sink) before execution (MEASUREMENTS §11).
 
-5. **Kernel Execution**: Semantic Kernel parses this JSON, **invokes my C# function**, and feeds the result back to the LLM for the next reasoning step.
-
-This is the **ReAct pattern** (Reasoning + Acting): the AI reasons about what to do, acts by calling functions, and iterates until the task is complete."
+This is the ReAct-style loop (reason → act → observe), implemented via SK auto
+invoke — not a separate `FunctionCallingStepwisePlanner` type in this repo."
 
 **Follow-up Question**: "What if the LLM calls a function with invalid parameters?"
 
@@ -83,7 +85,14 @@ This finds memories about **similar concepts**—like 'Optimus humanoid', 'Bosto
 
 **Follow-up**: "What about scale?"
 
-**Answer**: "Qdrant is production-ready and used by companies like OpenAI and Hugging Face. It supports distributed deployments, sharding, and quantization for billion-scale vector search. For my project scope, I benchmarked up to 100K vectors locally — p95 search latency was 5.3 ms. The HNSW index is approximate (trades recall for speed). On a paraphrased 50-query eval over 100K distractors with the index actually engaged, recall@5 was 0.96 and flat across ef while search p95 still rose — latency has a tradeoff curve; that corpus has little recall headroom left."
+**Answer**: "Qdrant is used in industry for vector search and supports distributed
+deployments, sharding, and quantization. For this project scope, I benchmarked up
+to 100K vectors locally — p95 search latency was 5.3 ms (synthetic). The HNSW
+index is approximate (trades recall for speed). On a paraphrased 50-query eval
+over 100K distractors with the index actually engaged, recall@5 was 0.96 and flat
+across ef while search p95 still rose — latency has a tradeoff curve; that corpus
+has little recall headroom left. Default here is ef=16, quantization=none
+(MEASUREMENTS §13)."
 
 ---
 
@@ -128,10 +137,12 @@ This finds memories about **similar concepts**—like 'Optimus humanoid', 'Bosto
 | **Startup (avg)** | 99 ms | 48 ms | **~52% faster** |
 | **Peak RSS (avg)** | 64 MB | 24 MB | **~62% less RAM** |
 | **Docker image** | N/A | 51.2 MB | linux-arm64, runtime-deps:chiseled |
-| **Container STARTUP_MS** | N/A | 23 ms | measured in container |
+| **Container STARTUP (5-run avg)** | N/A | **8.8 ms** | MEASUREMENTS §6 |
 
 **Important caveat**: these measurements are for startup time (kernel + plugin init)
-on a macOS arm64 machine. Actual inference latency is dominated by the LLM, not startup.
+on a macOS arm64 machine (and container cold start for the Docker row). Actual
+inference latency is dominated by the LLM, not startup. Prefer the 8.8 ms
+5-run average over older single-run container lines that printed 23 or 32 ms (§6).
 
 **Why This Matters for Cloud Deployments**:
 
@@ -191,23 +202,12 @@ Final Answer: Based on current data, Tesla stock is up 15% in Q1 2026 due to...
 ```
 
 **Implementation in NeuroSearch**:
-```csharp
-var planner = new FunctionCallingStepwisePlanner(new Options
-{
-    MaxIterations = 10,  // Limit reasoning loops
-    MaxTokens = 4000     // Control context size
-});
 
-var result = await planner.ExecuteAsync(kernel, userQuery);
-```
-
-The planner implements this loop:
-1. **Think**: LLM reasons about next step
-2. **Act**: Execute function
-3. **Observe**: Feed results back
-4. **Repeat**: Until task complete or max iterations
-
-**Logging**: My console output shows each step in color-coded format—interviewers love seeing this live."
+Auto function calling with a per-turn tool budget (8/turn, 40/session) and an
+injection policy filter (MEASUREMENTS §11). Max planning iterations and token
+caps appear in appsettings as agent configuration — the live loop uses
+`GetChatMessageContentAsync` with `FunctionChoiceBehavior.Auto` (see Program.cs /
+PROJECT.txt §3). Console logging shows tool invocations during a run."
 
 ---
 
@@ -332,13 +332,15 @@ The planner implements this loop:
 
 - **Startup (AOT vs JIT, macOS arm64)**: 48 ms vs 99 ms → **~52% faster**
 - **Peak RAM (AOT vs JIT)**: ~24 MB vs ~64 MB → **~62% less**
-- **Docker image**: 51.2 MB (linux-arm64, chiseled, STARTUP_MS=23 in container)
+- **Docker image**: ~51 MB (linux-arm64, chiseled); container startup **avg 8.8 ms** (5-run, §6)
 - **Qdrant search p95**: 0.93 ms @ 10K / 5.3 ms @ 100K vectors (synthetic, local Docker)
 - **E2E RAG p95**: ≈ 23 ms (embed + search, nomic-embed-text warm, local Ollama)
 - **Embed p95**: ≈ 20 ms (nomic-embed-text, CPU, macOS arm64, warm)
 - **Vector dimensions**: 768D (nomic-embed-text)
-- **Security tests**: 43/43 passing
+- **Automated tests**: 124/124 (MEASUREMENTS §14); earlier §2 recorded 97
+- **ASR baseline**: 12/20 → 1/20 spotlighting (p≈0.00098); n=24 still B=1/24 (§11, §14)
 - **CVE cleared**: GHSA-2ww3-72rp-wpp4 (SK 1.32.0 → 1.78.0)
+- **Not done**: Azure deploy, third-party red-team, injection-proof claim
 
 **RETIRED (fabricated, never measured on this project — do NOT use):**
 - ~~310ms vs 3.2s (90% faster)~~
@@ -374,6 +376,8 @@ The planner implements this loop:
 
 ---
 
-**Remember**: You're not selling a project—you're selling **your ability to build production-grade AI systems**. NeuroSearch proves you can architect, implement, and optimize beyond tutorials.
+**Remember**: You're not selling a project—you're selling **your ability to measure,
+demote over-claims, and ship a local agent stack**. NeuroSearch proves you can
+architect, implement, and instrument beyond tutorials. See PROJECT.txt.
 
-**Good luck! 🚀**
+**Good luck.**
