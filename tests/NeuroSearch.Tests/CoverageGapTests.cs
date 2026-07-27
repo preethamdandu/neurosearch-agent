@@ -32,14 +32,15 @@ public class CoverageGapTests
         }
     }
 
-    // ── 3a. Exfil shapes ─────────────────────────────────────────────────
+    // ── 3a. Exfil shapes (legacy fixture hosts — blocked by allowlist, not hostname pattern)
+    // Prefer PlausibleHostExfilTests for non-fixture evidence. These remain as regression.
 
     [Theory]
     [InlineData("https://attacker.test/aGVsbG8gd29ybGQxMjM")]           // path-segment
     [InlineData("https://aGVsbG8gd29ybGQ.attacker.test/")]              // subdomain
     [InlineData("https://attacker.test/#d=c2VjcmV0LWNvbnRleHQ")]        // fragment
     [InlineData("https://attacker.test/?d=c2VjcmV0")]                   // query (existing)
-    public void Exfil_Shapes_Path_Subdomain_Fragment_Are_Blocked(string exfilUrl)
+    public void Exfil_Unauthorized_Hosts_Blocked_By_Allowlist_Regardless_Of_Shape(string exfilUrl)
     {
         var session = new InjectionSessionState();
         var filter = new InjectionPolicyFilter(session);
@@ -51,6 +52,7 @@ public class CoverageGapTests
             new Dictionary<string, string?> { ["url"] = exfilUrl },
             out var msg), $"Expected block for {exfilUrl}, got allow");
         Assert.Contains("exfiltration", msg);
+        Assert.Contains("unauthorized", msg);
     }
 
     // ── 3b. Metadata / title injection ───────────────────────────────────

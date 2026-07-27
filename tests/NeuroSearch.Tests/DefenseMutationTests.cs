@@ -177,16 +177,18 @@ public class DefenseMutationTests
     // ── ExfilCheck ───────────────────────────────────────────────────────
 
     [Fact]
-    public void Disabling_ExfilCheck_Allows_Attacker_Url()
+    public void Disabling_ExfilCheck_Allows_Unauthorized_Plausible_Host()
     {
+        // Plausible host (no attacker/evil/.test) — proves allowlist enforcement is gated
+        // by ExfilCheck, not by fixture-shaped hostname patterns.
         var on = Session(DefenseSwitches.AllOn);
         var off = Session(DefenseSwitches.AllOn.With(exfilCheck: false));
-        on.BeginUserTurn("summarize https://legit.test/post");
-        off.BeginUserTurn("summarize https://legit.test/post");
-        on.MarkUntrusted("https://legit.test/post");
-        off.MarkUntrusted("https://legit.test/post");
+        on.BeginUserTurn("summarize https://research.example.com/article");
+        off.BeginUserTurn("summarize https://research.example.com/article");
+        on.MarkUntrusted("https://research.example.com/article");
+        off.MarkUntrusted("https://research.example.com/article");
 
-        var url = "https://attacker.test/?d=c2VjcmV0";
+        var url = "https://analytics-cdn.example.net/collect?d=CANARY_TOKEN_NEUROSEARCH_EXFIL_42";
         Assert.False(new InjectionPolicyFilter(on).TryAuthorize(
             "WebScraper", "ScrapeUrlAsync",
             new Dictionary<string, string?> { ["url"] = url }, out _));
@@ -194,7 +196,7 @@ public class DefenseMutationTests
         Assert.True(new InjectionPolicyFilter(off).TryAuthorize(
             "WebScraper", "ScrapeUrlAsync",
             new Dictionary<string, string?> { ["url"] = url }, out _),
-            "Attacker URL must pass when ExfilCheck disabled");
+            "Unauthorized plausible host must pass when ExfilCheck disabled");
     }
 
     // ── Allowlist ────────────────────────────────────────────────────────

@@ -82,7 +82,11 @@ public sealed class InjectionPolicy
             }
         }
 
-        // 4. Exfiltration / unauthorized outbound URL
+        // 4. Exfiltration — ENFORCEMENT is structural only:
+        //    (a) host allowlist / provenance (URL must appear in the user request)
+        //    (b) trusted-context substring leak in outbound args
+        // Shape/entropy heuristics are ADVISORY (logged) — never the deny reason.
+        // Do NOT key enforcement on fixture-shaped hosts (attacker.*, evil.*, .test).
         if (_state.Defenses.ExfilCheck && IsOutboundNetwork(pluginName, functionName))
         {
             var url = GetArg(args, "url") ?? GetArg(args, "query") ?? string.Empty;
@@ -92,30 +96,28 @@ public sealed class InjectionPolicy
             {
                 if (!_state.IsUrlAuthorized(url))
                 {
+                    LogExfilShapeAdvisory(url);
                     LogSecondarySignalIfPresent(url);
                     return PolicyDecision.Block(
                         "exfiltration",
-                        $"Blocked WebScraper call to unauthorized URL '{Truncate(url, 120)}'. " +
-                        "URL must appear in the user's request.");
+                        $"Blocked WebScraper call to unauthorized host '{Truncate(url, 120)}'. " +
+                        "Outbound hosts must appear in the user's request (allowlist / provenance).");
                 }
             }
 
+            // Provenance-based: a trusted non-URL context substring in outbound args
             if (_state.LooksLikeContextExfiltration(argBlob) ||
                 _state.LooksLikeContextExfiltration(url))
             {
+                LogExfilShapeAdvisory(url);
                 return PolicyDecision.Block(
                     "exfiltration",
-                    "Blocked outbound call: arguments look like context exfiltration " +
-                    "(high-entropy query string or trusted-context substring in URL).");
+                    "Blocked outbound call: trusted-context substring appears in arguments " +
+                    "(context-leak / provenance check).");
             }
 
-            // Whole-URL exfil shapes (not querystring-only): path, subdomain, fragment
-            if (LooksLikeExfilUrlShape(url))
-            {
-                return PolicyDecision.Block(
-                    "exfiltration",
-                    "Blocked outbound call to suspected exfiltration endpoint.");
-            }
+            // Advisory only — never blocks
+            LogExfilShapeAdvisory(url);
         }
 
         // Secondary signal (logged only — NEVER the enforcement point)
@@ -191,21 +193,33 @@ public sealed class InjectionPolicy
         s.Length <= max ? s : s[..max] + "...";
 
     /// <summary>
-    /// Detect exfil URL shapes across query, path, subdomain, and fragment.
-    /// Intentionally narrow on non-attacker hosts to avoid CDN/UTM false positives;
-    /// attacker.* canaries and context-substring checks carry the rest.
+    /// Advisory shape signal (logged only). Detects query / path / subdomain / fragment
+    /// channels that look like data smuggling. MUST NOT be an enforcement point and MUST
+    /// NOT key on fixture strings (attacker, evil, .test).
     /// </summary>
-    internal static bool LooksLikeExfilUrlShape(string url)
+    private void LogExfilShapeAdvisory(string url)
+    {
+        if (!HasExfilChannelShape(url))
+            return;
+        _state.LogBlock(
+            $"[InjectionPolicy] SECONDARY_SIGNAL rule=exfil-shape-advisory " +
+            $"url=\"{Truncate(url, 80)}\" (logged only — not an enforcement point; " +
+            "deny decisions use allowlist/provenance only)");
+    }
+
+    /// <summary>
+    /// Shape detector for advisory logging / unit introspection. Not used to allow/deny.
+    /// </summary>
+    internal static bool HasExfilChannelShape(string url)
     {
         if (string.IsNullOrWhiteSpace(url))
             return false;
 
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
         {
-            return url.Contains("attacker.", StringComparison.OrdinalIgnoreCase) &&
-                   (url.Contains('?', StringComparison.Ordinal) ||
-                    url.Contains('#', StringComparison.Ordinal) ||
-                    HasLongBase64ishToken(url));
+            return url.Contains('?', StringComparison.Ordinal) ||
+                   url.Contains('#', StringComparison.Ordinal) ||
+                   HasLongBase64ishToken(url);
         }
 
         var host = uri.Host ?? "";
@@ -213,14 +227,6 @@ public sealed class InjectionPolicy
         var query = uri.Query ?? "";
         var fragment = uri.Fragment ?? "";
 
-        var isAttackerHost = host.Contains("attacker.", StringComparison.OrdinalIgnoreCase) ||
-                             host.EndsWith(".attacker.test", StringComparison.OrdinalIgnoreCase) ||
-                             host.Equals("attacker.test", StringComparison.OrdinalIgnoreCase);
-
-        if (!isAttackerHost)
-            return false; // non-attacker hosts: rely on IsUrlAuthorized + LooksLikeContextExfiltration
-
-        // attacker host: any query, fragment, long path token, or base64 subdomain label
         if (!string.IsNullOrEmpty(query) && query.Length > 1)
             return true;
         if (!string.IsNullOrEmpty(fragment) && fragment.Length > 1)
@@ -228,8 +234,6 @@ public sealed class InjectionPolicy
 
         var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
         if (segments.Any(s => s.Length >= 8 && HasLongBase64ishToken(s)))
-            return true;
-        if (path.Length > 8 && segments.Length > 0)
             return true;
 
         var labels = host.Split('.', StringSplitOptions.RemoveEmptyEntries);
