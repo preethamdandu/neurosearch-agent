@@ -228,6 +228,23 @@ IMPORTANT context notes:
   - The 500-point collection is a demo corpus; production corpora are larger.
   - Qdrant search dominates more at larger corpus sizes (see §3b).
 
+CONTROL RUN (why E2E SEARCH_P50=2.639 ms @ 500 pts is SLOWER than
+synthetic SEARCH_P50=0.722 ms @ 10K pts):
+  Command:
+    dotnet run --project tools/NeuroSearch.Benchmarks -c Release -- \
+      --count 500 --queries 200 --dim 768 --collection neurosearch-500-control
+  UTC: 2026-07-27T07:27:09Z
+  Results (synthetic, 500 vectors, NO Ollama in process):
+    SEARCH_AVG_MS = 0.495
+    SEARCH_P50_MS = 0.474
+    SEARCH_P95_MS = 0.612
+    SEARCH_P99_MS = 0.830
+  Finding (measured, not guessed): synthetic search @ 500 pts is sub-1ms
+    (p50 0.474 ms). Therefore the E2E SEARCH split of ~2.6 ms is NOT a
+    Qdrant corpus-size effect — it is CPU contention from Ollama embedding
+    running on the same machine between/during the timed search window.
+    Side-by-side: 500 synth p50=0.474 ms vs E2E search p50=2.639 ms.
+
 Honest wording for LinkedIn/resume:
   "End-to-end RAG latency (real Ollama nomic-embed-text embeddings + Qdrant search):
    E2E p50 ≈ 21 ms, p95 ≈ 23 ms on a warm model / local setup.
@@ -261,16 +278,21 @@ JIT (PublishAot=false, self-contained osx-arm64):
   MAX_RSS_AVG_MB   = 63.52
 
 Native AOT (PublishAot=true, self-contained osx-arm64):
-  Main binary      ≈ 16,203,856 bytes (~15.5 MB)
-  Publish dir size ≈ 83,795,968 bytes (~79.9 MB)  [includes macOS dSYM debug bundle]
   STARTUP_AVG_MS   = 48
   STARTUP_MIN_MS   = 47
   STARTUP_MAX_MS   = 50
   MAX_RSS_AVG_MB   = 24.18
 
-dSYM note: The 79.9 MB AOT dir includes an 89 MB macOS .dSYM debug symbol bundle
-  which is platform-specific and not shipped in the Linux Docker image.
-  Linux AOT binary (from Docker build) = just the stripped binary + appsettings.json.
+AOT publish dir sizes (re-measured 2026-07-27 via `du -sh`, NOT the old 79.9 MB claim):
+  Command: du -sh artifacts/aot artifacts/aot/NeuroSearch.Agent.dSYM
+           ls -lh artifacts/aot/NeuroSearch.Agent
+  artifacts/aot/                         = 110M   (TOTAL publish dir)
+  artifacts/aot/NeuroSearch.Agent.dSYM/  =  89M   (macOS debug symbols ONLY)
+  artifacts/aot/NeuroSearch.Agent        =  21M   (main AOT binary)
+  PDBs (Core+Plugins)                    ≈  36K
+  CORRECTION: earlier "79.9 MB dir includes 89 MB dSYM" was arithmetically
+  impossible and wrong. Real breakdown: 110M = 21M binary + 89M dSYM + small PDBs.
+  The .dSYM is platform-specific and is NOT shipped in the Linux Docker image.
 
 Derived (from THESE measured averages):
   Cold-start improvement:  (99 - 48) / 99  ≈ 51.5% faster
@@ -311,14 +333,28 @@ Results:
   Container output: printed STARTUP_MS=23 then READY (verified)
   Platform:         linux/arm64
 
-Note on image size:
-  51.2 MB includes the chiseled Ubuntu Noble base (~12 MB) plus the stripped
-  AOT binary (~21 MB) and appsettings.json. No .NET runtime, no SDK, no shell.
+Layer accounting (command: docker history neurosearch-agent:aot --format '{{.Size}}\t{{.CreatedBy}}'):
+  23.8 MB   COPY NeuroSearch.Agent (stripped linux-arm64 AOT binary)
+  12.7 MB   COPY /rootfs (noble-chiseled base filesystem)
+  12.3 kB   COPY appsettings.json
+  12.3 kB   COPY /rootfs/home/app
+   8.2 kB   WORKDIR
+   0 B      ENTRYPOINT / ENV / USER layers
+  Sum of content COPY layers ≈ 36.5 MB
+  docker images reported size = 51.2 MB
+  Unexplained gap ≈ 14.7 MB — BuildKit attestation/provenance manifest
+    layers + Docker Desktop size accounting (compressed vs uncompressed /
+    multi-platform index). Not "missing" binary bulk; not .NET runtime.
+  docker inspect .Size (virtual unique) = 14,595,251 bytes (~13.9 MB)
+    — Docker's internal unique-layer accounting; differs from `docker images`
+    human size. Recorded for honesty; use `docker images` 51.2 MB as the
+    user-facing image size claim.
 
-AOT sizes comparison:
-  macOS publish dir (with dSYM):     79.9 MB  (unusable in Docker; debug symbols)
-  Linux Docker image (stripped):     51.2 MB
-  JIT self-contained osx-arm64:      90.8 MB
+AOT sizes comparison (corrected):
+  macOS publish dir TOTAL = 110M (21M binary + 89M dSYM)
+  Linux Docker image     = 51.2 MB (docker images)
+  Layer content sum      ≈ 36.5 MB (history COPY layers)
+  JIT self-contained     ≈ 90.8 MB
 
 Honest wording:
   "Multi-stage Docker build: SDK+clang build stage publishes Native AOT
