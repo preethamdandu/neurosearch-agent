@@ -601,7 +601,8 @@ P0 HAPPY PATH (prior session; still green):
   Research→scrape→save SUCCEEDS with provenance=untrusted.
   Poisoning regression (no user save-intent) still BLOCKS.
   Re-verified this session: JIT STARTUP_MS=130 READY + SMOKE_PASS;
-  AOT STARTUP_MS=70 READY + SMOKE_PASS; docker images 51.3MB STARTUP_MS=32 READY.
+  AOT STARTUP_MS=70 READY + SMOKE_PASS; docker ~51.3 MB, container startup
+  5-run avg 8.8 ms (see §6 — prior single-run 23/32 ms were not averages).
 
 PHASE 0–2 CORRECTIONS (over-claim fixes, 2026-07-27):
 

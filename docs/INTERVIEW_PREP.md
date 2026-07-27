@@ -75,16 +75,15 @@ This finds memories about **similar concepts**—like 'Optimus humanoid', 'Bosto
 3. When querying, it finds vectors with the **smallest cosine distance** to the query embedding
 4. Benchmarked retrieval: Qdrant search p95 = 0.93 ms (10K) / 5.3 ms (100K) synthetic;
    end-to-end RAG (embed + search) p95 ≈ 23 ms on a warm Ollama model locally.
-   Accuracy: on 50 independently labeled title→doc pairs (structural labels — not
-   from the embedder under test), recall@1/5/10 = 1.0 and MRR@10 = 1.0 at
-   hnsw_ef=128; ef 16→256 leaves recall flat while search p95 moves ~0.82→1.16 ms
-   (MEASUREMENTS.txt §12).
+   Accuracy: 50 paraphrased queries over 100K distractors with HNSW engaged
+   (indexed_vectors_count>0): recall@1=0.88, @5=0.96, @10=0.98, MRR@10≈0.92
+   at ef=128. An earlier N=50 ef table was invalidated (exact search). See §12.
 
 **Real-world use case**: If a user asks 'What did we learn about AI robots?' yesterday, the system finds memories about 'Tesla Optimus' or 'autonomous humanoids' even though they didn't use those exact words."
 
 **Follow-up**: "What about scale?"
 
-**Answer**: "Qdrant is production-ready and used by companies like OpenAI and Hugging Face. It supports distributed deployments, sharding, and quantization for billion-scale vector search. For my project scope, I benchmarked up to 100K vectors locally — p95 search latency was 5.3 ms. The HNSW index is approximate (trades recall for speed). On a 50-doc labeled eval the tradeoff curve showed recall already saturated at 1.0 even at ef=16 — latency still rose with ef, which is the point: latency was a choice."
+**Answer**: "Qdrant is production-ready and used by companies like OpenAI and Hugging Face. It supports distributed deployments, sharding, and quantization for billion-scale vector search. For my project scope, I benchmarked up to 100K vectors locally — p95 search latency was 5.3 ms. The HNSW index is approximate (trades recall for speed). On a paraphrased 50-query eval over 100K distractors with the index actually engaged, recall@5 was 0.96 and flat across ef while search p95 still rose — latency has a tradeoff curve; that corpus has little recall headroom left."
 
 ---
 

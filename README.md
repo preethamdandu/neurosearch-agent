@@ -1,403 +1,114 @@
-# 🧠 NeuroSearch Agent
+# NeuroSearch Agent
 
-<div align="center">
+A **.NET Native AOT** autonomous research agent — not another multi-gigabyte Python container.
 
-**Autonomous AI Research Agent with Enterprise-Grade Security**
+| | NeuroSearch (this repo) | Typical Python agent image |
+|---|---|---|
+| Image | **~51 MB** | 800 MB–2 GB |
+| Container cold start | **~9 ms** avg (5-run) | seconds |
+| Peak RSS (macOS AOT) | **~24 MB** | hundreds of MB |
 
-[![.NET](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet)](https://dotnet.microsoft.com/)
-[![Security Tests](https://img.shields.io/badge/security_tests-43%2F43_passing-success)](./SECURITY_AUDIT.md)
-[![OWASP](https://img.shields.io/badge/OWASP-compliant-brightgreen)](https://owasp.org/)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-
-*An intelligent research assistant that autonomously searches the web, extracts information, and provides comprehensive answers using local LLM inference.*
-
-[Features](#-features) • [Security](#-security-first) • [Quick Start](#-quick-start) • [Architecture](#-architecture) • [Testing](#-testing)
-
-</div>
+Sub-millisecond Qdrant search is Qdrant's achievement. Shipping an agentic SK stack as a chiseled ~51 MB AOT binary that is ready in milliseconds is the uncommon part.
 
 ---
 
-## 🎯 Overview
+## Injection defense — with a measurement
 
-NeuroSearch is a **production-ready autonomous AI agent** built with Microsoft Semantic Kernel that demonstrates:
+Most security writeups list controls. This one measured attack success on identical payloads (`qwen3.5:9b`, temp 0, 3 repeats):
 
-- ✅ **100% security test pass rate** (43 automated tests)
-- ✅ **OWASP Top 10 compliance** (SQL injection, XSS, SSRF protection)
-- ✅ **Thread-safe rate limiting** (20+ concurrent requests validated)
-- ✅ **Enterprise-grade architecture** (clean separation, dependency injection)
-- ✅ **Principal engineer-level documentation** (security audit, testing protocols)
+> Spotlighting reduced attack success from **12/20 to 1/20** (McNemar exact, 11 discordant pairs, **p ≈ 0.00098**) — significant at α=0.05. The policy filter reduced 1/20 to 0/20, but with a single discordant pair (p = 1.0) that step is **not demonstrable at n=20**; it is retained as a hard backstop for payloads that defeat spotlighting. Cross-model generalization is untested.
 
-This project showcases **security-first engineering** and **production best practices** for AI agent development.
+**Six enforcing controls** (not seven): content sanitizer, delimiter neutralizer, spotlight wrapper, tainted-sink rule, allowlist (tools **and** outbound hosts/provenance), tool-call budget. A seventh “ExfilCheck” shape heuristic was demoted to **advisory-only** after an audit showed it matched fixture domains (`attacker.*`) while the allowlist did the real work — a control count going **down** after scrutiny.
+
+Every number above is in [`MEASUREMENTS.txt`](MEASUREMENTS.txt).
 
 ---
 
-## 🚀 Features
+## What it is
 
-### Autonomous Capabilities
-- 🔍 **Web Search** - Real-time internet search via Serper.dev API
-- 📄 **Web Scraping** - Intelligent content extraction from web pages
-- 🧠 **Multi-Step Reasoning** - Chain multiple searches to answer complex questions
-- 💾 **Vector Memory** - Long-term semantic memory with Qdrant (code complete)
+- **C# / .NET 10** + **Semantic Kernel 1.78** auto function calling  
+- Plugins: `WebSearch`, `WebScraper`, `VectorMemory` (Qdrant + Ollama `nomic-embed-text`)  
+- Local chat via Ollama (`qwen3.5:9b` by default)  
+- Provenance taint: scraper/search → untrusted spotlight markers → memory payload `provenance=untrusted` → retrieval surfaces it  
 
-### Security & Reliability
-- 🛡️ **SQL Injection Protection** - Pattern detection blocking 4 attack vectors
-- 🛡️ **XSS Protection** - Script injection prevention (5 patterns blocked)
-- 🛡️ **SSRF Defense** - Internal IP blocking (localhost + RFC 1918 ranges)
-- ⚡ **Rate Limiting** - Token bucket algorithm (10 search/min, 5 scrape/min)
-- 🧵 **Thread-Safe** - Concurrent request handling with `ConcurrentDictionary`
-- ⏱️ **Timeout Controls** - 10-second caps on external requests
-
-### Developer Experience
-- 📝 **Comprehensive Tests** - 43 xUnit tests with 100% pass rate
-- 📊 **Detailed Logging** - Colored console output with plugin tracing
-- 📚 **Full Documentation** - Setup guides, examples, security audit
-- 🔧 **Easy Setup** - Docker Compose for dependencies
-
----
-
-## 🔒 Security First
-
-This project implements **OWASP best practices** with comprehensive validation:
-
-```csharp
-// Example: Multi-layer security validation
-var validationResult = InputValidator.ValidateSearchQuery(userInput);
-if (!validationResult.IsValid) {
-    return $"Error: {validationResult.ErrorMessage}";
-}
-
-var rateLimitResult = _rateLimiter.AllowRequest("search_api");
-if (!rateLimitResult.IsAllowed) {
-    return $"Error: Rate limit exceeded. Retry after {rateLimitResult.RetryAfterSeconds}s (HTTP 429)";
-}
+```text
+User → SK agent → tools
+              ↓
+     WebScraper / WebSearch  →  Untrusted + spotlight delimiters
+              ↓
+     InjectionPolicyFilter   →  allowlist / budget / tainted-sink
+              ↓
+     VectorMemory (Qdrant)   →  tagged persistence + semantic recall
 ```
 
-### Security Test Results
-
-| Category | Tests | Pass Rate | Coverage |
-|----------|-------|-----------|----------|
-| SQL Injection | 4 | 100% ✅ | `UNION`, `DROP`, `OR '='` patterns |
-| XSS Protection | 5 | 100% ✅ | `<script>`, `javascript:`, `eval()` |
-| SSRF Defense | 7 | 100% ✅ | localhost, 127.0.0.1, RFC 1918 |
-| Rate Limiting | 3 | 100% ✅ | Burst, refill, thread-safety |
-| Input Validation | 11 | 100% ✅ | Empty, null, length, format |
-| Numeric Ranges | 7 | 100% ✅ | Boundary conditions |
-| URL Validation | 6 | 100% ✅ | Schemes, malformed URLs |
-
-**Total: 43/43 tests passing** | **Execution time: 1.43s** | **Zero vulnerabilities found**
-
-📄 **[View Full Security Audit Report →](./SECURITY_AUDIT.md)**
-
 ---
 
-## 🏗️ Architecture
-
-```mermaid
-graph TB
-    User[👤 User] --> Agent[🤖 NeuroSearch Agent]
-    Agent --> Kernel[Semantic Kernel]
-    
-    Kernel --> LLM[🧠 Ollama<br/>llama3:8b]
-    Kernel --> Plugins[Plugin Layer]
-    
-    Plugins --> Search[🔍 WebSearchPlugin<br/>Rate: 10/min]
-    Plugins --> Scraper[📄 WebScraperPlugin<br/>Rate: 5/min]
-    Plugins --> Memory[💾 VectorMemoryPlugin]
-    
-    Search --> Validator1[Input Validator<br/>SQL/XSS Detection]
-    Scraper --> Validator2[URL Validator<br/>SSRF Protection]
-    
-    Search --> RateLimit1[Rate Limiter<br/>Token Bucket]
-    Scraper --> RateLimit2[Rate Limiter<br/>Token Bucket]
-    
-    Search --> Serper[Serper.dev API]
-    Scraper --> Web[Web Pages]
-    Memory --> Qdrant[🗄️ Qdrant<br/>Vector DB]
-    
-    LLM --> Local[Local Inference<br/>No API costs]
-    
-    style Agent fill:#4CAF50
-    style Kernel fill:#2196F3
-    style Plugins fill:#FF9800
-    style Validator1 fill:#f44336
-    style Validator2 fill:#f44336
-    style RateLimit1 fill:#9C27B0
-    style RateLimit2 fill:#9C27B0
-```
-
-### Tech Stack
-
-- **Framework**: .NET 10 with Native AOT support
-- **AI Orchestration**: Microsoft Semantic Kernel 1.32
-- **LLM**: Ollama (local inference - Llama 3 8B)
-- **Vector Database**: Qdrant (self-hosted)
-- **Web Search**: Serper.dev API
-- **HTML Parsing**: HtmlAgilityPack
-- **Testing**: xUnit
-
----
-
-## 📦 Quick Start
-
-### Prerequisites
-
-- [.NET 10 SDK](https://dotnet.microsoft.com/download)
-- [Docker Desktop](https://www.docker.com/products/docker-desktop)
-- [Ollama](https://ollama.ai/) (for local LLM)
-
-### Installation
+## Quickstart
 
 ```bash
-# 1. Clone the repository
-git clone https://github.com/yourusername/neurosearch-agent.git
-cd neurosearch-agent
+# Infra
+docker compose up -d
+# ollama serve && ollama pull nomic-embed-text && ollama pull qwen3.5:9b
 
-# 2. Start infrastructure
-docker-compose up -d
+# Run (JIT; PublishAot stays false by default)
+dotnet run --project src/NeuroSearch.Agent -c Release
 
-# 3. Download AI models
-ollama pull llama3:8b
-ollama pull all-minilm
+# Non-interactive checks
+dotnet run --project src/NeuroSearch.Agent -c Release -- --startup-benchmark
+dotnet run --project src/NeuroSearch.Agent -c Release -- --smoke-test
 
-# 4. Configure API key (optional - uses demo mode without)
-cp .env.example .env
-# Edit .env and add your SERPER_API_KEY
+# Tests (97 expected — not “97 attack defenses”)
+dotnet test tests/NeuroSearch.Tests/NeuroSearch.Tests.csproj -c Release
 
-# 5. Build and run
-dotnet build
-dotnet run --project src/NeuroSearch.Agent
+# AOT container
+docker build -t neurosearch-agent:aot .
+docker run --rm neurosearch-agent:aot --startup-benchmark
 ```
 
-### First Query
-
-```
-You> What is the latest news about AI?
-```
-
-The agent will:
-1. 🔍 Search the web for "latest AI news"
-2. 📊 Analyze top results
-3. 💬 Synthesize a comprehensive answer
+More reproduce commands (ASR, retrieval quality, latency benches): see §8 of `MEASUREMENTS.txt`.
 
 ---
 
-## 🧪 Testing
+## What I measured and what I didn't
 
-### Run Security Tests
+Source of truth: **[`MEASUREMENTS.txt`](MEASUREMENTS.txt)** (outranks resume/interview docs).
 
-```bash
-dotnet test tests/NeuroSearch.Tests
-```
+**Measured (examples):**
 
-**Expected Output:**
-```
-Test Run Successful.
-Total tests: 43
-     Passed: 43
-     Failed: 0
- Total time: 1.43 Seconds
-```
+- Spotlighting ASR 12/20 → 1/20 (McNemar p ≈ 0.00098); policy 1 → 0 not significant at n=20  
+- Benign-page exfil heuristic FP **0/40** after narrowing; 65 unauthorized-host blocks are expected  
+- Retrieval on **100K distractors + 50 paraphrased queries** with HNSW engaged (`indexed_vectors_count > 0`): recall@1=0.88, @5=0.96, @10=0.98, MRR@10≈0.92  
+- Qdrant synthetic search p95 ≈ 0.93 ms @10K / 5.3 ms @100K; E2E embed+search p95 ≈ 23 ms (warm local)  
+- Container image ~51 MB; startup **avg 8.8 ms** over 5 runs  
 
-### Manual Security Validation
+**Deliberate capability tradeoff:** the agent will **not** follow URLs discovered inside scraped content. Multi-hop research requires the user to paste the second URL. Auto-following page links is the primary exfiltration vector.
 
-Try these adversarial inputs to see protection in action:
+**Not claimed / not done:**
 
-```bash
-# SQL Injection attempt
-You> Search for '; DROP TABLE users; --
-
-[❌ SearchPlugin] Validation failed: Query contains potentially malicious SQL patterns
-
-# SSRF attempt  
-You> Scrape http://localhost:6333
-
-[❌ ScraperPlugin] Validation failed: Cannot scrape internal/localhost URLs (SSRF protection)
-
-# Rate limiting
-# (Make 12 rapid searches)
-[⚠️  SearchPlugin] Rate limited. Retry after 5 seconds
-```
-
-📄 **[View Complete Testing Protocol →](./BRUTAL_TESTING.md)**
+- Injection-proof / red-team certified  
+- Azure production deploy  
+- Cross-model ASR generalization  
+- That an early N=50 “ef sweep” measured HNSW (it didn’t — `indexed_vectors_count` was 0; table deleted)  
 
 ---
 
-## 📊 Performance Metrics
+## Auditing a green suite found the interesting bugs
 
-| Metric | Value | Target | Status |
-|--------|-------|--------|--------|
-| Security Test Suite | 1.43s | <5s | ✅ |
-| Avg Test Duration | 33ms | <100ms | ✅ |
-| Thread Safety (20 concurrent) | 100% | 100% | ✅ |
-| Rate Limiter Precision | ±100ms | ±500ms | ✅ |
-| SQL Injection Detection | 4/4 blocked | 100% | ✅ |
-| XSS Detection | 5/5 blocked | 100% | ✅ |
-| SSRF Protection | 7/7 blocked | 100% | ✅ |
+Two findings came from refusing to trust a green bar:
+
+1. **P0 product break:** a tainted-sink rule that “secured” the agent by blocking legitimate research→save. Narrowed with a user save-intent carve-out; memory-poisoning without that intent still blocks.  
+2. **ExfilCheck demotion:** the shape heuristic keyed on fixture hostnames. Plausible-host tests + allowlist enforcement replaced a fake seventh defense.
+
+That habit — measure, then demote over-claims — is the point of this repo as much as the agent itself.
 
 ---
 
-## 📁 Project Structure
+## Docs
 
-```
-NeuroSearch Agent/
-├── src/
-│   ├── NeuroSearch.Agent/          # Main console application
-│   │   ├── Program.cs               # Agent orchestration loop
-│   │   └── appsettings.json         # Configuration
-│   │
-│   ├── NeuroSearch.Plugins/         # AI-callable functions
-│   │   ├── WebSearchPlugin.cs       # Internet search (OWASP hardened)
-│   │   ├── WebScraperPlugin.cs      # Content extraction (SSRF protected)
-│   │   └── VectorMemoryPlugin.cs    # Long-term memory
-│   │
-│   └── NeuroSearch.Core/            # Shared utilities
-│       ├── InputValidator.cs        # SQL/XSS/SSRF validation
-│       └── RateLimiter.cs           # Token bucket algorithm
-│
-├── tests/
-│   └── NeuroSearch.Tests/
-│       └── SecurityTests.cs         # 43 comprehensive tests
-│
-├── docs/
-│   ├── INTERVIEW_PREP.md            # Technical Q&A
-│   └── RESUME_BULLETS.md            # Copy-paste bullets
-│
-├── SECURITY_AUDIT.md                # Principal engineer test report ⭐
-├── BRUTAL_TESTING.md                # Testing protocol
-├── SETUP.md                         # Detailed setup guide
-├── EXAMPLES.md                      # 20+ query examples
-└── docker-compose.yml               # Infrastructure config
-```
+| File | Role |
+|---|---|
+| [`MEASUREMENTS.txt`](MEASUREMENTS.txt) | Verified metrics only |
+| [`docs/RESUME_BULLETS.md`](docs/RESUME_BULLETS.md) | Resume language ≤ MEASUREMENTS |
+| [`docs/INTERVIEW_PREP.md`](docs/INTERVIEW_PREP.md) | Talk track ≤ MEASUREMENTS |
 
----
-
-## 💡 Example Queries
-
-### Simple Research
-```
-You> What is the current price of Bitcoin?
-```
-
-### Multi-Step Reasoning
-```
-You> Who is the CEO of the company that created C#?
-     Where did he go to college?
-     What is that college's mascot?
-```
-
-The agent will:
-1. Search: "C# programming language creator" → Microsoft
-2. Search: "Microsoft CEO" → Satya Nadella
-3. Search: "Satya Nadella college" → University of Chicago Booth
-4. Search: "University of Chicago mascot" → Phoenix
-
-**Expected**: 4 search operations visible in console logs
-
-### Content Extraction
-```
-You> Scrape https://example.com/article and summarize it
-```
-
-📄 **[View 20+ More Examples →](./EXAMPLES.md)**
-
----
-
-## 🔧 Configuration
-
-### Environment Variables (`.env`)
-
-```bash
-# API Keys
-SERPER_API_KEY=your_api_key_here
-
-# Ollama Configuration
-OLLAMA_ENDPOINT=http://localhost:11434
-OLLAMA_CHAT_MODEL=llama3:8b
-OLLAMA_EMBEDDING_MODEL=all-minilm
-
-# Qdrant Configuration
-QDRANT_ENDPOINT=http://localhost:6333
-QDRANT_COLLECTION=neurosearch-memory
-QDRANT_VECTOR_SIZE=384
-
-# Rate Limiting
-SEARCH_RATE_LIMIT_PER_MIN=10
-SEARCH_BURST_SIZE=5
-SCRAPER_RATE_LIMIT_PER_MIN=5
-SCRAPER_BURST_SIZE=3
-
-# Agent Behavior
-MAX_PLANNING_ITERATIONS=10
-MAX_TOKENS_PER_ITERATION=4000
-```
-
----
-
-## 📚 Documentation
-
-- ⚡ **[Quick start](./QUICKSTART.md)** - Minimal steps from clone to run
-- 📖 **[Setup Guide](./SETUP.md)** - Detailed installation instructions
-- 🔒 **[Security Audit](./SECURITY_AUDIT.md)** - Comprehensive test report
-- 🧪 **[Testing Protocol](./BRUTAL_TESTING.md)** - Brutal testing methodology
-- 💼 **[Interview Prep](./docs/INTERVIEW_PREP.md)** - Technical Q&A
-- 📝 **[Resume Bullets](./docs/RESUME_BULLETS.md)** - Career materials
-- 📋 **[Examples](./EXAMPLES.md)** - Query examples and demos
-
----
-
-## 🤝 Contributing
-
-You are welcome to use this project, learn from it, and submit improvements (issues, pull requests, or forks).
-
-Please read **[Attribution](#-attribution)** below and keep the **copyright notice and full [LICENSE](LICENSE)** with any copy or derivative work so others know who wrote the original code.
-
----
-
-## ✨ Attribution
-
-**Original author:** [Preetham Dandu](https://github.com/preethamdandu) (`preethamdandu`), © 2026.
-
-If you use, modify, or redistribute this software (including in private or public projects), you **must**:
-
-1. **Keep the copyright line and license** — Include the `LICENSE` file (or the same copyright + permission text) with source or binary distributions, as required by the [MIT License](LICENSE).
-2. **Make authorship visible** — In README, docs, or an “About” screen for your derivative, state that the NeuroSearch Agent code is based on or includes work by **Preetham Dandu**, and link to this repository when practical: `https://github.com/preethamdandu/neurosearch-agent`
-
-That way people can see you built the original implementation, and credit stays honest as the project evolves.
-
----
-
-## 📄 License
-
-Released under the [MIT License](LICENSE) — free to use and improve; **attribution required** as described above.
-
----
-
-## 🎓 About This Project
-
-**Purpose**: Portfolio demonstration of:
-- Security engineering expertise
-- AI/LLM integration skills
-- Production architecture design
-- Testing best practices
-
-**Built for**: companies seeking engineers who understand security, testing, and production readiness.
-
-**Key Achievement**: **43/43 security tests passing** with zero vulnerabilities found
-
----
-
-## 📬 Contact
-
-**Author**: Preetham Dandu ([@preethamdandu](https://github.com/preethamdandu))  
-**LinkedIn**: [preetham-dandu](https://www.linkedin.com/in/preetham-dandu/)  
-**Email**: preethamdandu8@gmail.com
-
----
-
-<div align="center">
-
-**⭐ If this project demonstrates the kind of security-first engineering you value, please star it!**
-
-[Report Issue](https://github.com/preethamdandu/neurosearch-agent/issues) • [Request Feature](https://github.com/preethamdandu/neurosearch-agent/issues)
-
-</div>
+`PublishAot` remains **false** for day-to-day builds; enable only at publish/Docker time.

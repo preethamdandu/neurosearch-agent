@@ -41,12 +41,13 @@ natural language intent — bridging AI reasoning with deterministic code execut
 Engineered long-term semantic memory using Qdrant (HNSW indexing) with
 nomic-embed-text embeddings; benchmarked Qdrant search p95 at 0.93 ms (10K vectors)
 and 5.3 ms (100K vectors); end-to-end RAG (embed + search) p95 ≈ 23 ms on a warm
-local model. Retrieval quality on 50 independently labeled title→doc pairs:
-recall@1/5/10 = 1.0, MRR@10 = 1.0 at hnsw_ef=128 (labels structural — not from
-the embedder under test; see MEASUREMENTS.txt §12).
+local model. Retrieval quality on 50 paraphrased queries over 100K distractors
+with HNSW engaged (indexed_vectors_count>0): recall@1=0.88, @5=0.96, @10=0.98,
+MRR@10≈0.92 at ef=128 (structural labels — not from the embedder; see §12).
+An earlier N=50 ef sweep was invalidated (exact search; indexed_vectors_count=0).
 ```
-**Why it works**: Shows database expertise, performance measurement rigour, and RAG
-knowledge with real, reproducible numbers — latency coupled to an accuracy number.
+**Why it works**: Shows database expertise, performance measurement rigour, and
+honesty about what the index was actually doing.
 
 ---
 
@@ -54,8 +55,8 @@ knowledge with real, reproducible numbers — latency coupled to an accuracy num
 ```
 Published with .NET Native AOT: measured startup averaged 48 ms vs 99 ms JIT
 (~52% faster), peak RSS 24 MB vs 64 MB (~62% less) on macOS arm64. Multi-stage
-Dockerfile produces a ~51 MB linux-arm64 image (STARTUP_MS=32 in container this
-session), using mcr.microsoft.com/dotnet/nightly/runtime-deps:chiseled as the base.
+Dockerfile produces a ~51 MB linux-arm64 image; container startup avg 8.8 ms
+over 5 runs (single-run 23/32 ms figures were not averages — corrected).
 ```
 **Why it works**: Quantifiable, reproducible performance data with honest
 measurement methodology.
@@ -65,17 +66,16 @@ measurement methodology.
 ### Option 5: Security Hardening (Best for Security / Regulated Industries)
 ```
 Enforced OWASP-oriented security across input AND content boundaries: 97
-automated tests (43 input validation + LLM01 content-boundary suite). Not all
-are distinct attack defenses — some assert pipeline wrapping or extraction
-canaries only (MEASUREMENTS.txt §11). Exfil deny path is host allowlist /
-provenance (not fixture-shaped hostname patterns). Happy-path research→save
-works; mutation matrix covers each control; benign corpus heuristic FP 0/40.
-Layered ASR on qwen3.5:9b: 12/20 → 1/20 → 0/20 (spotlight± × policy±, 3 repeats;
-McNemar A↔B p≈0.001). Multi-hop follow of scraped links blocked by design.
-Cleared GHSA-2ww3-72rp-wpp4 (SK 1.78.0). Defense-in-depth — not injection-proof.
+automated tests (43 input validation + LLM01 suite). Six enforcing controls —
+ExfilCheck demoted to advisory after an audit showed fixture-shaped matching
+(count went 7→6 on purpose). Happy-path research→save works; mutation matrix
+covers each enforcing control; benign corpus heuristic FP 0/40. Spotlighting
+ASR 12/20→1/20 on qwen3.5:9b (McNemar p≈0.00098); policy 1→0 not demonstrable
+at n=20. Multi-hop follow of scraped links blocked by design. Cleared
+GHSA-2ww3-72rp-wpp4 (SK 1.78.0). Defense-in-depth — not injection-proof.
 ```
-**Why it works**: Shows security posture with honest test taxonomy, FP rate,
-structural exfil control, and measured soft-control effect — without overclaiming.
+**Why it works**: Shows security posture with honest demotion, FP rate, and
+measured soft-control effect — without overclaiming.
 
 ---
 
