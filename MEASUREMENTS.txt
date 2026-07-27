@@ -705,50 +705,48 @@ KNOWN BYPASSES / NOT DEFENDED:
 
 
 ================================================================================
-12) RETRIEVAL QUALITY — recall@k + MRR + ef tradeoff (measured 2026-07-27)
+12) RETRIEVAL QUALITY — INVALIDATED ef sweep + primary metrics (2026-07-27)
 ================================================================================
 
-Command:
+Command that produced the (now-invalid) ef table:
   dotnet run --project tools/NeuroSearch.Benchmarks -c Release -- \
     --retrieval-quality --model nomic-embed-text --ef 128 --ef-curve 16,64,128,256
 
-Setup:
-  Corpus: tests/NeuroSearch.Tests/Fixtures/RetrievalEval/corpus.json (committed)
-  N_DOCS=50  N_QUERIES=50
-  Embedder: nomic-embed-text via Ollama (768-dim) — REAL embeddings
-  Qdrant: localhost:6334 cosine; UTC≈2026-07-27T08:40:25Z
-  Machine: Preethams-MacBook-Pro
+Index state of collection neurosearch-retrieval-eval (inspected AFTER the run):
+  Command:
+    curl -s localhost:6333/collections/neurosearch-retrieval-eval
+  Recorded:
+    points_count           = 50
+    indexed_vectors_count  = 0
+    status                 = green
+    optimizer.indexing_threshold = 10000
+    hnsw.full_scan_threshold     = 10000
 
-LABELING METHOD (non-circular):
-  Each document has a unique canonical title and abstract. Each query IS that
-  document's title. Relevant doc = the document that owns the title. Labels
-  assigned at fixture authoring from structural title→doc ownership — NOT from
-  embedding queries with nomic-embed-text. See corpus.json "labeling_method".
+FINDING — the ef-vs-recall table was INVALID:
+  Qdrant does not build an HNSW graph until a segment exceeds indexing_threshold
+  (here 10,000; default often 20,000). With N=50 and indexed_vectors_count=0,
+  every search was exact brute-force. SearchParams.HnswEf was ignored. Flat
+  recall@5=1.000 across ef∈{16,64,128,256} is the signature of exact search on
+  an easy title→doc eval — not evidence of HNSW recall/latency tradeoffs.
+  Detected by curling the collection and reading indexed_vectors_count.
+  Corroboration: §3b 100K run reported status Yellow while the index built.
 
-Primary (hnsw_ef=128):
-  recall@1=1.0000  recall@5=1.0000  recall@10=1.0000  MRR@10=1.0000
-  SEARCH_P95_MS=1.191
+DELETED: the ef-vs-recall-vs-p95 table from the prior session. It did not
+measure what it claimed. Replaced by this note. Rebuilding a valid eval
+(paraphrase queries + distractors above indexing_threshold, index asserted
+engaged) is Phase 1 of the following session — see below if present.
 
-ef tradeoff curve:
-  | hnsw_ef | recall@1 | recall@5 | recall@10 | MRR@10 | search_p95_ms |
-  |---------|:|---------:|---------:|----------:|------:|--------------:|
-  |      16 |    1.000 |    1.000 |     1.000 | 1.000 |         0.822 |
-  |      64 |    1.000 |    1.000 |     1.000 | 1.000 |         0.869 |
-  |     128 |    1.000 |    1.000 |     1.000 | 1.000 |         0.874 |
-  |     256 |    1.000 |    1.000 |     1.000 | 1.000 |         1.162 |
+Primary metrics at N=50 (exact search only — do NOT cite as HNSW quality):
+  Corpus: tests/.../Fixtures/RetrievalEval/corpus.json
+  Labels: title → owning abstract (structural, non-circular)
+  recall@1/5/10 = 1.0, MRR@10 = 1.0, SEARCH_P95_MS ≈ 1.2
+  Honest status: NOT a valid HNSW accuracy claim. Kept only as a record of
+  what the broken harness produced before the index-state check.
 
-Finding: On N=50, recall saturates at 1.0 across ef∈{16..256}; search p95 still
-rises (~0.82→1.16 ms). Latency was a choice. Cross-ref from §3/§3b synthetic
-latency sections — those had no accuracy number; this supplies one for real embeds.
-
-Honest wording:
-  "Retrieval quality on 50 independently labeled title→document pairs
-   (structural labels, not from the embedder under test): recall@1/5/10 = 1.0,
-   MRR@10 = 1.0 at hnsw_ef=128. Varying ef 16→256 leaves recall flat; search
-   p95 moves ~0.82→1.16 ms."
-
-DO NOT say recall=1.0 generalizes to large noisy corpora, or that labels came
-from top embedding hits.
+DO NOT say:
+  - That ef was varied productively on N=50
+  - That recall=1.0 at multiple ef values proves HNSW quality
+  - Any "latency was a choice" claim derived from that flat table
 
 
 ================================================================================
