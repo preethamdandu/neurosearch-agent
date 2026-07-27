@@ -105,6 +105,105 @@ public class CoverageGapTests
         Assert.Contains("Visible paragraph", result);
     }
 
+    // ── Extraction-surface canaries ───────────────────────────────────────
+    // If any of these FAIL, the extraction surface grew. Add injection-coverage
+    // tests for the newly extracted surface in the SAME PR (see Title_And_Meta_*).
+    // Title and meta ARE extracted today — they have injection tests, not canaries.
+
+    [Fact]
+    public async Task Extractor_Does_Not_Read_AltText_ExpandingSurfaceRequiresInjectionTests()
+    {
+        // CANARY: if this fails, alt= entered the pipeline — add injection tests same PR.
+        var html = """
+            <html><body><article>
+            <p>Body paragraph long enough to be kept by the extractor pipeline.</p>
+            <img src="fig.png" alt="INJECTION_SURFACE_ALT_CANARY_DO_NOT_EXTRACT">
+            </article></body></html>
+            """;
+        var result = await new WebScraperPlugin(MockHtml(html), new InjectionSessionState())
+            .ScrapeUrlAsync("https://docs.example.com/page");
+        Assert.DoesNotContain("INJECTION_SURFACE_ALT_CANARY_DO_NOT_EXTRACT", result);
+        Assert.Contains("Body paragraph", result);
+    }
+
+    [Fact]
+    public async Task Extractor_Does_Not_Read_HtmlComments_ExpandingSurfaceRequiresInjectionTests()
+    {
+        // CANARY: if this fails, HTML comments entered the pipeline — add injection tests same PR.
+        var html = """
+            <html><body><article>
+            <p>Body paragraph long enough to be kept by the extractor pipeline.</p>
+            <!-- INJECTION_SURFACE_COMMENT_CANARY_DO_NOT_EXTRACT -->
+            </article></body></html>
+            """;
+        var result = await new WebScraperPlugin(MockHtml(html), new InjectionSessionState())
+            .ScrapeUrlAsync("https://docs.example.com/page");
+        Assert.DoesNotContain("INJECTION_SURFACE_COMMENT_CANARY_DO_NOT_EXTRACT", result);
+        Assert.Contains("Body paragraph", result);
+    }
+
+    [Fact]
+    public async Task Extractor_Does_Not_Read_Script_InnerText_ExpandingSurfaceRequiresInjectionTests()
+    {
+        // CANARY: scripts are stripped; if this fails, script text is now a surface.
+        var html = """
+            <html><body><article>
+            <p>Body paragraph long enough to be kept by the extractor pipeline.</p>
+            <script>var x = "INJECTION_SURFACE_SCRIPT_CANARY_DO_NOT_EXTRACT";</script>
+            </article></body></html>
+            """;
+        var result = await new WebScraperPlugin(MockHtml(html), new InjectionSessionState())
+            .ScrapeUrlAsync("https://docs.example.com/page");
+        Assert.DoesNotContain("INJECTION_SURFACE_SCRIPT_CANARY_DO_NOT_EXTRACT", result);
+    }
+
+    [Fact]
+    public async Task Extractor_Does_Not_Read_Style_InnerText_ExpandingSurfaceRequiresInjectionTests()
+    {
+        var html = """
+            <html><body><article>
+            <p>Body paragraph long enough to be kept by the extractor pipeline.</p>
+            <style>.x::after { content: "INJECTION_SURFACE_STYLE_CANARY_DO_NOT_EXTRACT"; }</style>
+            </article></body></html>
+            """;
+        var result = await new WebScraperPlugin(MockHtml(html), new InjectionSessionState())
+            .ScrapeUrlAsync("https://docs.example.com/page");
+        Assert.DoesNotContain("INJECTION_SURFACE_STYLE_CANARY_DO_NOT_EXTRACT", result);
+    }
+
+    [Fact]
+    public async Task Extractor_Does_Not_Read_Hidden_Input_Values_ExpandingSurfaceRequiresInjectionTests()
+    {
+        var html = """
+            <html><body><article>
+            <p>Body paragraph long enough to be kept by the extractor pipeline.</p>
+            <form><input type="hidden" name="payload" value="INJECTION_SURFACE_HIDDEN_INPUT_CANARY"></form>
+            </article></body></html>
+            """;
+        var result = await new WebScraperPlugin(MockHtml(html), new InjectionSessionState())
+            .ScrapeUrlAsync("https://docs.example.com/page");
+        Assert.DoesNotContain("INJECTION_SURFACE_HIDDEN_INPUT_CANARY", result);
+    }
+
+    [Fact]
+    public async Task Extractor_Does_Read_Title_And_Meta_Description_Covered_By_Injection_Tests()
+    {
+        // NOT a "does not extract" canary — title/meta ARE in the surface today.
+        // This asserts the current contract so a silent removal is also visible.
+        var html = """
+            <html><head>
+            <title>TITLE_SURFACE_CANARY_IS_EXTRACTED_OK</title>
+            <meta name="description" content="META_SURFACE_CANARY_IS_EXTRACTED_OK and more text here">
+            </head><body><article>
+            <p>Body paragraph long enough to be kept by the extractor pipeline.</p>
+            </article></body></html>
+            """;
+        var result = await new WebScraperPlugin(MockHtml(html), new InjectionSessionState())
+            .ScrapeUrlAsync("https://docs.example.com/page");
+        Assert.Contains("TITLE_SURFACE_CANARY_IS_EXTRACTED_OK", result);
+        Assert.Contains("META_SURFACE_CANARY_IS_EXTRACTED_OK", result);
+    }
+
     // ── Truncation vs delimiter ──────────────────────────────────────────
 
     [Fact]
