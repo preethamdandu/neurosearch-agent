@@ -1,207 +1,184 @@
-# Resume Bullet Points - NeuroSearch Agent
+# Resume Bullet Points — NeuroSearch Agent
 
-Copy these battle-tested, metric-rich bullet points directly into your resume. Customize company names and adjust metrics after testing.
-
----
-
-## 🎯 Primary Bullet (Project Title)
-
-**NeuroSearch** – Autonomous AI Research Agent  
-*Tech Stack: C# .NET 10, Microsoft Semantic Kernel, Qdrant Vector DB, Ollama (Llama-3), Docker, Native AOT*
+All metrics in this file come from **MEASUREMENTS.txt** (see repo root).
+Every number has a corresponding command and raw output recorded there.
+Do NOT add or change numbers without updating MEASUREMENTS.txt first.
 
 ---
 
-## 💼 Resume Bullets (Choose 3-4)
+## Primary Bullet (Project Title)
 
-### Option 1: Architecture & Agent Framework (BEST for Microsoft/Azure)
-```
-• Architected an autonomous AI agent using Microsoft Semantic Kernel and the ReAct (Reasoning + Acting) 
-  pattern, enabling multi-step workflow planning and deterministic C# function execution for web search, 
-  content extraction, and semantic memory operations
-```
-
-**Why it works**: Shows architecture skills, Microsoft tech, and understanding of AI design patterns.
+**NeuroSearch** — Autonomous AI Research Agent
+*Stack: C# / .NET 10, Microsoft Semantic Kernel, Qdrant Vector DB, Ollama, Docker, Native AOT*
 
 ---
 
-### Option 2: Function Calling & Native Code Integration (BEST for General SWE)
-```
-• Implemented Native Function Calling by decorating C# methods with semantic attributes, allowing the LLM 
-  to dynamically invoke 3 custom plugins (WebSearch, WebScraper, VectorMemory) based on natural language 
-  intent, bridging AI reasoning with deterministic code execution
-```
+## Resume Bullets (Choose 3–4)
 
+### Option 1: Architecture & Agent Framework (Best for Microsoft / Azure)
+```
+Architected an autonomous AI agent using Microsoft Semantic Kernel with auto function
+calling, enabling multi-step ReAct-style planning and deterministic C# plugin execution
+(WebSearch, WebScraper, VectorMemory) driven by natural language instructions.
+```
+**Why it works**: Shows architecture skills, Microsoft tech, and understanding of
+AI design patterns.
+
+---
+
+### Option 2: Function Calling & Native Code Integration (Best for General SWE)
+```
+Implemented auto function calling by decorating C# methods with [KernelFunction]
+attributes, allowing the LLM to dynamically invoke 3 custom plugins based on
+natural language intent — bridging AI reasoning with deterministic code execution.
+```
 **Why it works**: Demonstrates deep understanding of how LLMs invoke traditional code.
 
 ---
 
-### Option 3: Vector Database & RAG Performance (BEST for Data Infrastructure/Rubrik)
+### Option 3: Vector Database & RAG Performance (Best for Data Infrastructure)
 ```
-• Engineered a Long-Term Memory system using Qdrant Vector Database with HNSW indexing, achieving <50ms 
-  p95 retrieval latency across 10K+ semantic embeddings to enable Retrieval Augmented Generation (RAG) 
-  for contextual agent responses
+Engineered long-term semantic memory using Qdrant (HNSW indexing) with
+nomic-embed-text embeddings; benchmarked Qdrant search p95 at 0.93 ms (10K vectors)
+and 5.3 ms (100K vectors); end-to-end RAG (embed + search) p95 ≈ 23 ms on a warm
+local model (see MEASUREMENTS.txt).
 ```
-
-**Why it works**: Shows database expertise, performance optimization, and RAG knowledge.
+**Why it works**: Shows database expertise, performance measurement rigour, and RAG
+knowledge with real, reproducible numbers.
 
 ---
 
-### Option 4: Performance Engineering & AOT (BEST for Systems/Performance Roles)
+### Option 4: Performance Engineering & AOT (Best for Systems / Performance Roles)
 ```
-• Optimized for production deployment using .NET Native AOT compilation, reducing cold-start time by 90% 
-  (3.2s → 310ms) and memory footprint by 60% (205MB → 82MB), ideal for serverless/container environments 
-  like Azure Functions and Kubernetes
+Published with .NET Native AOT: measured startup averaged 48 ms vs 99 ms JIT
+(~52% faster), peak RSS 24 MB vs 64 MB (~62% less) on macOS arm64. Multi-stage
+Dockerfile produces a 51.2 MB linux-arm64 image (STARTUP_MS=23 in container),
+using mcr.microsoft.com/dotnet/nightly/runtime-deps:chiseled as the base.
 ```
-
-**Why it works**: Quantifiable performance gains with real-world deployment context.
+**Why it works**: Quantifiable, reproducible performance data with honest
+measurement methodology.
 
 ---
 
-### Option 5: Local AI & Privacy (BEST for Security/Regulated Industries)
+### Option 5: Security Hardening (Best for Security / Regulated Industries)
 ```
-• Designed privacy-first architecture using Ollama for local LLM inference (Llama-3-8B), eliminating 
-  external API dependencies and enabling zero-cost, on-premises AI deployment suitable for regulated 
-  industries with data sovereignty requirements
+Enforced OWASP-oriented security: 43 automated unit tests covering SQL injection,
+XSS, SSRF URL blocking, and token-bucket rate limiting. Added repo-wide NuGet
+audit-as-error gate (Directory.Build.props) that fails builds on any moderate+
+CVE — cleared known advisory GHSA-2ww3-72rp-wpp4 by upgrading Semantic Kernel
+from 1.32.0 to 1.78.0.
 ```
-
-**Why it works**: Addresses compliance, cost, and modern AI infrastructure concerns.
+**Why it works**: Shows proactive security posture with real test counts and a
+documented CVE remediation.
 
 ---
 
-### Option 6: Observability & Production Readiness (BEST for DevOps/Platform Engineering)
+### Option 6: Local AI & Privacy (Best for Privacy-Sensitive Roles)
 ```
-• Instrumented agent workflow with structured logging and console telemetry to track function call 
-  latency, token usage, and planning iterations, enabling real-time monitoring of AI decision-making 
-  patterns and performance bottlenecks
+Designed privacy-first architecture using Ollama for local LLM inference
+(qwen3.5:9b for chat, nomic-embed-text for embeddings), eliminating external
+API dependencies and enabling zero-cost, on-premises AI deployment suitable
+for data sovereignty requirements.
 ```
-
-**Why it works**: Shows production mindset and understanding of observability.
+**Why it works**: Addresses compliance, cost, and modern AI infrastructure
+concerns without overstating capabilities.
 
 ---
 
-## 🔥 **Recommended Combination** (3 bullets)
+## Recommended Combination (3 bullets)
 
 **For AI Engineer / Backend roles at Microsoft, Rubrik, Datadog:**
 
-1. **Architecture bullet** (Option 1) – Shows system design
-2. **RAG/Vector bullet** (Option 3) – Shows data infrastructure
-3. **Performance bullet** (Option 4) – Shows optimization skills
+1. **Architecture bullet** (Option 1) — system design
+2. **Security bullet** (Option 5) — security posture with a real CVE fix
+3. **RAG/Vector or AOT bullet** (Option 3 or 4) — data infrastructure or
+   performance, whichever the JD emphasises
 
 ---
 
-## 📊 Leadership/Impact Bullets (If you have space)
+## Leadership / Impact Bullets (Only if true)
 
-### If you contributed to open source or wrote a blog
+Use these ONLY if you actually did these things:
+
 ```
-• Published technical deep-dive on Microsoft Semantic Kernel agent patterns, receiving 500+ views and 
-  contributing C# code samples to the community knowledge base
+• Presented autonomous agent capabilities explaining ReAct planning, vector
+  embeddings, and Native AOT optimizations to [N] peers — [replace N with real count].
+```
+```
+• Published technical write-up on Microsoft Semantic Kernel agent patterns
+  [link if public] — [replace view count with real figure if verifiable].
 ```
 
-### If you presented this
-```
-• Demonstrated autonomous agent capabilities in technical showcase, explaining ReAct planning, vector 
-  embeddings, and Native AOT optimizations to 20+ peers and mentors
-```
+**Do not use placeholder counts** ("20+ peers", "500+ views") unless personally verified.
 
 ---
 
-## 🎯 Skills Section Additions
+## Skills Section Additions
 
-**Technical Skills to Add**:
+**Technical Skills**:
 - Microsoft Semantic Kernel
-- Ollama / LLM Inference
-- Vector Databases (Qdrant)
+- Ollama / Local LLM Inference
+- Vector Databases (Qdrant, HNSW indexing)
 - RAG (Retrieval Augmented Generation)
-- Native AOT Compilation
-- Docker / Containerization
+- Native AOT Compilation (.NET)
+- Docker / Multi-stage Containerisation
 - Agent Frameworks / ReAct Pattern
 - Embeddings / Semantic Search
+- NuGet Security Auditing
 
-**Soft update to existing skills**:
+**Updated existing skills**:
 - C# → **C# (.NET 10, Async/Await, Native AOT)**
 - APIs → **RESTful APIs, Semantic Function Calling**
 - Databases → **SQL, NoSQL, Vector Databases (Qdrant)**
 
 ---
 
-## 💡 Action Verb Guidance
-
-Use these power verbs to start your bullets:
-- **Architected** (for system design)
-- **Engineered** (for complex implementations)
-- **Optimized** (for performance work)
-- **Implemented** (for specific features)
-- **Integrated** (for bringing systems together)
-- **Instrumented** (for observability)
-
-**Avoid**:
-- "Helped", "Worked on", "Involved in" (too passive)
-- "Created a simple..." (underselling)
-- "Used ChatGPT to..." (red flag)
-
----
-
-## 📝 Project Description (for Resume or LinkedIn)
+## Project Description (Resume / LinkedIn)
 
 **Short Version (Resume)**:
 ```
-Autonomous AI research agent featuring multi-step planning (ReAct pattern), long-term semantic memory 
-(Qdrant vector DB), and local inference (Ollama). Optimized with Native AOT for 90% faster cold starts 
-and 60% memory reduction, demonstrating production-ready AI agent architecture.
+Autonomous AI research agent using Microsoft Semantic Kernel with auto function
+calling, Qdrant vector memory (RAG p95 ≈ 23 ms), 43 security unit tests, and
+Native AOT — startup ~52% faster than JIT, peak RAM ~62% lower.
+Containerised: 51.2 MB Docker image, STARTUP_MS=23.
 ```
 
-**Long Version (LinkedIn/Portfolio)**:
+**Long Version (LinkedIn)**:
 ```
-NeuroSearch is an autonomous AI research agent that goes beyond ChatGPT wrappers by implementing the 
-ReAct (Reasoning + Acting) pattern for multi-step workflow planning. Built with Microsoft Semantic 
-Kernel, the agent dynamically invokes custom C# functions for web search, content extraction, and 
-semantic memory operations.
+NeuroSearch is an autonomous AI research agent implementing the ReAct pattern
+for multi-step planning. Built with Microsoft Semantic Kernel and .NET 10, it
+dynamically invokes custom C# plugins (WebSearch, WebScraper, VectorMemory)
+based on natural language intent.
 
-Key achievements:
-• Multi-step planning with FunctionCallingStepwisePlanner
-• Long-term memory via Qdrant vector database (<50ms retrieval)
-• 100% local inference using Ollama (Llama-3) for privacy and zero API costs
-• Native AOT compilation: 90% faster cold starts (310ms vs 3.2s)
-• Production-ready architecture for Azure Container Apps deployment
+Measured results (see MEASUREMENTS.txt):
+• Qdrant HNSW search: p95 0.93 ms @ 10K / 5.3 ms @ 100K vectors (synthetic)
+• End-to-end RAG (Ollama embed + Qdrant search): E2E p95 ≈ 23 ms, warm model
+• Native AOT (macOS arm64): startup 48 ms vs 99 ms JIT (~52% faster);
+  peak RSS 24 MB vs 64 MB (~62% less)
+• Docker image: 51.2 MB (linux-arm64, runtime-deps:chiseled), STARTUP_MS=23
+• 43 security unit tests (SSRF, SQL injection, XSS, rate limiting) — 43/43
+• Audit-as-error NuGet gate: build fails on any moderate+ advisory
 
-This project demonstrates advanced AI engineering beyond simple API integrations, showcasing skills in 
-agent frameworks, vector databases, performance optimization, and production deployment strategies.
+All numbers are reproducible; commands in MEASUREMENTS.txt §8.
 ```
 
 ---
 
-## 🎯 GitHub README Tagline
+## GitHub README Tagline
 
 ```markdown
-> **Most students build ChatGPT wrappers. I built an autonomous system that writes its own code.**
+> Built with Semantic Kernel, Qdrant vector memory, Ollama local inference,
+> and Native AOT — every performance claim is measured and logged in MEASUREMENTS.txt.
 ```
 
 ---
 
-## ✅ Quality Checklist
+## Quality Checklist
 
 Before submitting your resume, verify:
-- [ ] At least 2 quantifiable metrics per bullet (%, time, count)
-- [ ] Technology names are capitalized correctly (Semantic Kernel, not semantic kernel)
-- [ ] Each bullet is 1-2 lines max (not paragraphs)
-- [ ] Action verbs are past tense ("Architected", not "Architecting")
-- [ ] No buzzwords without substance ("AI-powered" → explain how)
-- [ ] Spell-check (NeuroSearch, Qdrant, Ollama, Llama-3)
-
----
-
-## 🚀 LinkedIn Skill Endorsements to Request
-
-Ask peers/mentors to endorse you for:
-1. Microsoft Semantic Kernel
-2. C# / .NET Development
-3. Vector Databases
-4. AI/ML Engineering
-5. Performance Optimization
-6. Docker/Containerization
-
----
-
-**Pro Tip**: Tailor your bullet selection based on the job description keywords. If the JD mentions "scalability", use Option 4. If it mentions "data infrastructure", use Option 3.
-
-**Remember**: Your resume should tell a story of **impact**, not just activities. Every bullet should answer "so what?"
+- [ ] Every metric has a matching entry in MEASUREMENTS.txt
+- [ ] Technology names are capitalised correctly (Semantic Kernel, Qdrant, Ollama)
+- [ ] Each bullet is 1–2 lines max (not paragraphs)
+- [ ] Action verbs are past tense ("Benchmarked", not "Benchmarking")
+- [ ] No placeholder counts in "peers" or "blog views" unless you can verify them
+- [ ] No numbers from the old RESUME_BULLETS.md (3.2s→310ms, 205MB→82MB, <50ms @ 100K)

@@ -6,7 +6,9 @@ This guide prepares you to discuss NeuroSearch in technical interviews for AI En
 
 ## 🎯 The Elevator Pitch (30 seconds)
 
-> "I built an autonomous AI research agent using Microsoft Semantic Kernel that doesn't just call ChatGPT—it **plans multi-step workflows** and **executes C# code** I wrote. The agent has **long-term memory** via Qdrant vector database with sub-50ms retrieval, runs **100% locally** using Ollama for privacy, and uses **Native AOT compilation** for 90% faster cold starts—perfect for serverless deployments like Azure Functions."
+> "I built an autonomous AI research agent using Microsoft Semantic Kernel that doesn't just call ChatGPT — it **plans multi-step workflows** and **executes C# code** I wrote. The agent has **long-term memory** via Qdrant vector database (end-to-end RAG p95 ≈ 23 ms on a warm local model), runs **100% locally** using Ollama for privacy, and uses **Native AOT compilation** for ~52% faster cold starts — startup 48 ms vs 99 ms JIT."
+
+> *(Numbers from MEASUREMENTS.txt — do not ad-lib other figures in an interview.)*
 
 ---
 
@@ -68,16 +70,17 @@ await memory.SearchAsync("autonomous robots", minRelevance: 0.7)
 This finds memories about **similar concepts**—like 'Optimus humanoid', 'Boston Dynamics Atlas'—even if those exact words weren't used.
 
 **How it works**:
-1. Text is converted to **384-dimensional vectors** (embeddings) using Ollama's `all-minilm` model
+1. Text is converted to **768-dimensional vectors** using Ollama's `nomic-embed-text` model
 2. Qdrant stores these vectors in an **HNSW (Hierarchical Navigable Small World) graph**
 3. When querying, it finds vectors with the **smallest cosine distance** to the query embedding
-4. This enables **sub-50ms retrieval** even with 100K+ embeddings
+4. Benchmarked retrieval: Qdrant search p95 = 0.93 ms (10K) / 5.3 ms (100K) synthetic;
+   end-to-end RAG (embed + search) p95 ≈ 23 ms on a warm Ollama model locally
 
 **Real-world use case**: If a user asks 'What did we learn about AI robots?' yesterday, the system finds memories about 'Tesla Optimus' or 'autonomous humanoids' even though they didn't use those exact words."
 
 **Follow-up**: "What about scale?"
 
-**Answer**: "Qdrant is production-ready and used by companies like OpenAI and Hugging Face. It supports distributed deployments, sharding, and quantization for billion-scale vector search. For my project scope, the single-node Docker deployment handles millions of vectors easily."
+**Answer**: "Qdrant is production-ready and used by companies like OpenAI and Hugging Face. It supports distributed deployments, sharding, and quantization for billion-scale vector search. For my project scope, I benchmarked up to 100K vectors locally — p95 search latency was 5.3 ms. The HNSW index is approximate (trades recall for speed), which is the right trade-off for RAG workloads."
 
 ---
 
@@ -116,35 +119,39 @@ This finds memories about **similar concepts**—like 'Optimus humanoid', 'Bosto
 
 "Native AOT (Ahead-of-Time compilation) compiles C# directly to **machine code** at build time, instead of using JIT (Just-in-Time) compilation at runtime.
 
-**Performance Impact**:
-| Metric | JIT (.NET Standard) | Native AOT | Improvement |
-|--------|---------------------|------------|-------------|
-| **Cold Start** | 3.2s | 310ms | **90% faster** |
-| **Memory** | 205MB | 82MB | **60% smaller** |
-| **Disk Size** | 85MB | 45MB | **47% reduction** |
+**Measured Performance Impact** *(from MEASUREMENTS.txt, macOS arm64):*
+| Metric | JIT (self-contained) | Native AOT | Improvement |
+|--------|----------------------|------------|-------------|
+| **Startup (avg)** | 99 ms | 48 ms | **~52% faster** |
+| **Peak RSS (avg)** | 64 MB | 24 MB | **~62% less RAM** |
+| **Docker image** | N/A | 51.2 MB | linux-arm64, runtime-deps:chiseled |
+| **Container STARTUP_MS** | N/A | 23 ms | measured in container |
+
+**Important caveat**: these measurements are for startup time (kernel + plugin init)
+on a macOS arm64 machine. Actual inference latency is dominated by the LLM, not startup.
 
 **Why This Matters for Cloud Deployments**:
 
-1. **Azure Functions / Serverless**:
-   - Functions are billed **per-second of execution**
-   - 3s cold start = wasted money on every cold invocation
-   - 310ms cold start = near-instant response
+1. **Container deployments**:
+   - Smaller image (no full .NET runtime) → faster registry pulls
+   - Lower memory per instance → higher container density
+   - Faster startup → quicker autoscale responses
 
-2. **Container Scaling**:
-   - Kubernetes pods start 90% faster
-   - Autoscaling responds more effectively to traffic spikes
-   - Smaller images = faster pulls from container registry
+2. **Serverless-style workloads**:
+   - Cold start reduction matters more when idle replicas are scaled to zero
 
-3. **Edge Deployment**:
-   - Lower memory footprint enables **edge computing** scenarios
-   - Can run on resource-constrained devices
+3. **Edge deployment**:
+   - Lower memory footprint enables resource-constrained scenarios
 
 **Trade-offs**:
-- Reflection is limited (Semantic Kernel's newer versions support AOT)
-- Build time increases (~30s vs ~5s)
-- Per-platform binaries (need separate builds for Windows/Linux/macOS)
+- Reflection is limited — Semantic Kernel still needs JsonSerializerIsReflectionEnabledByDefault=true
+- Build time is higher (requires clang on Linux, heavy ILCompiler pass)
+- Per-platform binaries (separate linux-arm64, linux-x64, etc. builds)
+- AOT trim warnings on Http.Json helpers (runtime OK after explicit trimmer roots)
 
-But for production APIs, the runtime benefits far outweigh the build costs."
+**How I handled it**: Added DynamicDependency attributes and TrimmerRootAssembly
+entries in the csproj to preserve [KernelFunction] methods and Ollama request DTOs
+through trimming. Details and exact configuration in MEASUREMENTS.txt §10."
 
 ---
 
@@ -279,7 +286,8 @@ The planner implements this loop:
 
 **Emphasize**:
 - "Vector database for high-performance nearest-neighbor search"
-- "Sub-50ms p95 latency on 100K embeddings"
+- "Benchmarked HNSW search: p95 0.93 ms at 10K / 5.3 ms at 100K vectors (local Qdrant)"
+- "End-to-end RAG (embed + search): E2E p95 ≈ 23 ms on warm local Ollama"
 - "Understand index structures (HNSW) and trade-offs"
 - "Built for data persistence and recovery (Docker volumes)"
 
@@ -317,12 +325,23 @@ The planner implements this loop:
 
 ## 📊 Quick Stats to Memorize
 
-- **Cold Start**: 310ms (vs 3.2s without AOT) = **90% improvement**
-- **Memory**: 82MB (vs 205MB) = **60% reduction**
-- **RAG Retrieval**: <50ms p95 @ 100K embeddings
-- **Planning**: ~800ms average for 3-step plans
-- **Vector Dimensions**: 384D (all-MiniLM-L6-v2)
-- **Max Context**: 4K tokens per iteration (configurable)
+*(All from MEASUREMENTS.txt — do not use old numbers below)*
+
+- **Startup (AOT vs JIT, macOS arm64)**: 48 ms vs 99 ms → **~52% faster**
+- **Peak RAM (AOT vs JIT)**: ~24 MB vs ~64 MB → **~62% less**
+- **Docker image**: 51.2 MB (linux-arm64, chiseled, STARTUP_MS=23 in container)
+- **Qdrant search p95**: 0.93 ms @ 10K / 5.3 ms @ 100K vectors (synthetic, local Docker)
+- **E2E RAG p95**: ≈ 23 ms (embed + search, nomic-embed-text warm, local Ollama)
+- **Embed p95**: ≈ 20 ms (nomic-embed-text, CPU, macOS arm64, warm)
+- **Vector dimensions**: 768D (nomic-embed-text)
+- **Security tests**: 43/43 passing
+- **CVE cleared**: GHSA-2ww3-72rp-wpp4 (SK 1.32.0 → 1.78.0)
+
+**RETIRED (fabricated, never measured on this project — do NOT use):**
+- ~~310ms vs 3.2s (90% faster)~~
+- ~~82MB vs 205MB~~
+- ~~<50ms p95 @ 100K~~
+- ~~384D all-MiniLM-L6-v2~~
 
 ---
 

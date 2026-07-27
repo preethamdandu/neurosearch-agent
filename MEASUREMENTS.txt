@@ -1,0 +1,462 @@
+================================================================================
+NeuroSearch Agent — MEASUREMENTS.txt
+Verified performance / security log (do not invent numbers beyond this file)
+================================================================================
+Date (UTC):           2026-07-27T07:15:00Z  (session 2 — full phase 1-5 run)
+Machine:              Preethams-MacBook-Pro.local
+OS:                   macOS (Darwin 26.5.2), arch=arm64
+.NET SDK:             10.0.102
+RID used for AOT:     osx-arm64 (local), linux-arm64 (Docker container)
+Operator:             Cursor agent — all commands run locally, no numbers fabricated
+
+Raw machine log:      MEASUREMENTS_RAW.log
+AOT publish log:      AOT_PUBLISH.log
+Re-run scripts:       scripts/measure-cold-start.sh
+                      tools/NeuroSearch.Benchmarks
+
+
+================================================================================
+1) WHAT WE CHANGED (exact work done in this session)
+================================================================================
+
+A. Fixed security test false-positive
+   - File: tests/NeuroSearch.Tests/SecurityTests.cs
+   - Change: Assert.DoesNotContain("\0", ...) → Assert.DoesNotContain('\0', ...)
+   - Why: string "\0" overload false-failed on xUnit even when sanitization was correct
+   - Result: 43/43 tests PASS (re-run confirmed)
+
+B. Wired real Vector Memory (was code-only, not registered)
+   - Rewrote: src/NeuroSearch.Plugins/VectorMemoryPlugin.cs
+   - Now uses: Qdrant.Client + Ollama /api/embeddings (nomic-embed-text, 768-dim)
+   - Registered in: src/NeuroSearch.Agent/Program.cs as plugin "VectorMemory"
+   - Config: src/NeuroSearch.Agent/appsettings.json
+       Ollama:EmbeddingModel = nomic-embed-text
+       Qdrant:Host=localhost, GrpcPort=6334, VectorSize=768
+   - Removed broken preview package: Microsoft.SemanticKernel.Connectors.Qdrant
+
+C. Native AOT publish made to actually run
+   - PublishAot remains false by default for day-to-day builds
+   - Enabled at publish time: /p:PublishAot=true
+   - Added TrimmerRootAssembly for NeuroSearch.Plugins / Core / SemanticKernel
+   - Added PreservePluginSurface() DynamicDependency hooks so [KernelFunction]
+     methods survive trimming (without this, AOT crashed:
+     "doesn't implement any [KernelFunction]-attributed methods")
+   - Fixed config base path: AppContext.BaseDirectory (published binaries
+     no longer require cwd to be the project root)
+   - Added --startup-benchmark flag (prints STARTUP_MS=... then READY then exits)
+
+D. Added measurement tooling
+   - scripts/measure-cold-start.sh  → JIT vs AOT cold start + RSS
+   - tools/NeuroSearch.Benchmarks   → seed N vectors, measure search p50/p95/p99
+   - tools/NeuroSearch.Benchmarks --e2e → real Ollama embed + Qdrant search E2E
+   - Dockerfile                     → multi-stage AOT container (NOT Azure deploy)
+
+E. Infrastructure for benches
+   - docker compose up -d  → Qdrant on :6333 / gRPC :6334
+   - Ollama already had nomic-embed-text, qwen3.5:9b locally
+
+F. Security gate added (session 2)
+   - Directory.Build.props: NuGetAudit=true, NuGetAuditMode=all,
+     NuGetAuditLevel=moderate, WarningsAsErrors NU1901-NU1904
+   - Build fails if any moderate+ advisory is in direct or transitive packages
+
+G. Semantic Kernel upgraded to 1.78.0 (session 2)
+   - Cleared GHSA-2ww3-72rp-wpp4 (NU1904 on SK.Core 1.32.0)
+   - Details in §10
+
+
+================================================================================
+2) SECURITY TESTS (measured)
+================================================================================
+
+Command:
+  dotnet test tests/NeuroSearch.Tests/NeuroSearch.Tests.csproj -c Release
+
+Result (confirmed in both session 1 and session 2):
+  Passed: 43
+  Failed: 0
+  Duration: ~1s
+
+Security behaviors asserted:
+  - Input sanitization (null bytes, HTML injection, SQL injection patterns)
+  - SSRF URL blocking (private IP ranges, localhost, metadata endpoints)
+  - Rate limiter (token bucket algorithm) — allows burst, throttles sustained load
+  - Query length limits, special character stripping
+
+Honest wording for LinkedIn/resume:
+  "43 automated security unit tests for input validation (SQL injection, XSS,
+   SSRF URL blocking) and token-bucket rate limiting — all passing."
+
+DO NOT say:
+  - "Zero vulnerabilities found" as a security audit conclusion
+  - Previously: SK 1.32.0 had GHSA-2ww3-72rp-wpp4. Now cleared (SK 1.78.0).
+  - Unit tests passing ≠ penetration test passed
+
+
+================================================================================
+3) QDRANT SEARCH LATENCY @ 10,000 VECTORS (measured)
+================================================================================
+
+Command:
+  docker compose up -d
+  dotnet run --project tools/NeuroSearch.Benchmarks -c Release -- \
+    --count 10000 --queries 200 --dim 768
+
+Setup:
+  Collection: neurosearch-bench
+  Distance:   Cosine
+  Dim:        768 (matches nomic-embed-text output)
+  Vectors:    synthetic random unit vectors (seed=42)
+  Upsert:     10,000 vectors, batches of 256
+  Warmup:     20 searches (excluded from stats)
+  Measured:   200 searches, limit=5
+  Host:       localhost:6334 (Qdrant gRPC, Docker)
+
+Results:
+  UPSERT_SECONDS   = 0.86
+  SEARCH_AVG_MS    = 0.746
+  SEARCH_MIN_MS    = 0.615
+  SEARCH_MAX_MS    = 1.058
+  SEARCH_P50_MS    = 0.722
+  SEARCH_P95_MS    = 0.930
+  SEARCH_P99_MS    = 1.026
+
+Honest LinkedIn/resume wording:
+  "Benchmarked Qdrant cosine search over 10,000 768-dim vectors:
+   p95 ≈ 0.93 ms, p99 ≈ 1.03 ms (200 queries, local Docker, synthetic vectors)."
+
+DO NOT say:
+  "<50ms p95 across 10K/100K embeddings" (the real number is sub-1ms; 50ms
+   was a fabricated placeholder; sub-1ms is for Qdrant search only, not E2E)
+
+
+================================================================================
+3b) QDRANT SEARCH LATENCY @ 100,000 VECTORS (measured)
+================================================================================
+
+Command:
+  dotnet run --project tools/NeuroSearch.Benchmarks -c Release -- \
+    --count 100000 --queries 200 --dim 768 --collection neurosearch-100k
+
+Setup:
+  Collection: neurosearch-100k
+  Distance:   Cosine
+  Dim:        768
+  Vectors:    100,000 synthetic random unit vectors (seed=42)
+  Upsert:     100,000 vectors, batches of 256
+  Warmup:     20 searches (excluded from stats)
+  Measured:   200 searches, limit=5
+  Host:       localhost:6334 (Qdrant gRPC, Docker)
+  UTC:        2026-07-27T07:12:07Z
+
+Results:
+  UPSERT_SECONDS   = 11.26
+  SEARCH_AVG_MS    = 3.567
+  SEARCH_MIN_MS    = 2.455
+  SEARCH_MAX_MS    = 55.480
+  SEARCH_P50_MS    = 2.931
+  SEARCH_P95_MS    = 5.312
+  SEARCH_P99_MS    = 8.446
+  Collection status after upsert: Yellow (HNSW index building in background)
+
+10K vs 100K side-by-side (HNSW scaling):
+  Corpus      | P50 ms | P95 ms | P99 ms | Upsert s
+  ------------|--------|--------|--------|----------
+  10K  synth  |  0.722 |  0.930 |  1.026 |     0.86
+  100K synth  |  2.931 |  5.312 |  8.446 |    11.26
+
+Note: 100K status=Yellow at query time (index still building) — p95 may be
+lower once HNSW fully optimizes. These are real measured numbers, not projections.
+
+Honest wording:
+  "Benchmarked Qdrant HNSW search at 10K (p95 0.93 ms) and 100K vectors
+   (p95 5.3 ms), demonstrating sub-10ms retrieval across a 100K-vector corpus
+   (synthetic, local Docker)."
+
+DO NOT say:
+  "<50ms p95 at 100K" — the real p95 at 100K is 5.3 ms (synthetic vectors)
+  DO NOT extrapolate these synthetic numbers to production RAG workloads —
+  real embeddings are denser and less uniformly distributed.
+
+
+================================================================================
+4) END-TO-END RAG LATENCY (embed + search, measured)
+================================================================================
+
+Command:
+  dotnet run --project tools/NeuroSearch.Benchmarks -c Release -- \
+    --e2e --queries 200 --warmup 20 --seed-count 500 --dim 768 --model nomic-embed-text
+
+Setup:
+  Mode:         end-to-end — real Ollama embedding then Qdrant search
+  Ollama model: nomic-embed-text:latest (274 MB, local CPU inference, macOS arm64)
+  Model state:  WARM (pre-checked before benchmark started)
+  Qdrant:       localhost:6334 (Docker)
+  Collection:   neurosearch-e2e-bench (500 points, seeded with real embeddings)
+  Seed upsert:  500 documents (real embeds of 30 query strings), 10.90s
+  Query strings: 30 realistic AI/infrastructure research queries, cycled
+  Warmup:       20 iterations (excluded from stats)
+  Measured:     200 iterations
+  UTC:          2026-07-27T07:11:25Z
+
+Results:
+  EMBED_AVG_MS    = 18.365    (Ollama nomic-embed-text, CPU, warm)
+  EMBED_MIN_MS    = 15.557
+  EMBED_MAX_MS    = 64.460
+  EMBED_P50_MS    = 18.036
+  EMBED_P95_MS    = 19.794
+  EMBED_P99_MS    = 21.290
+
+  SEARCH_AVG_MS   = 2.673
+  SEARCH_MIN_MS   = 0.948
+  SEARCH_MAX_MS   = 4.862
+  SEARCH_P50_MS   = 2.639
+  SEARCH_P95_MS   = 3.599
+  SEARCH_P99_MS   = 4.798
+
+  E2E_AVG_MS      = 21.038    (embed + search combined)
+  E2E_MIN_MS      = 17.852
+  E2E_MAX_MS      = 67.063
+  E2E_P50_MS      = 20.696
+  E2E_P95_MS      = 22.870
+  E2E_P99_MS      = 23.931
+
+IMPORTANT context notes:
+  - Embedding latency is CPU/GPU-dependent and machine-specific.
+    These numbers are for a MacBook Pro arm64 with Ollama on CPU.
+    A GPU-accelerated machine or a dedicated embedding service would be faster.
+  - The 500-point collection is a demo corpus; production corpora are larger.
+  - Qdrant search dominates more at larger corpus sizes (see §3b).
+
+Honest wording for LinkedIn/resume:
+  "End-to-end RAG latency (real Ollama nomic-embed-text embeddings + Qdrant search):
+   E2E p50 ≈ 21 ms, p95 ≈ 23 ms on a warm model / local setup.
+   Embed split: p95 ≈ 20 ms; Search split: p95 ≈ 3.6 ms."
+
+DO NOT say:
+  "<50ms p95" as a guarantee for all hardware — it is true for THIS machine
+   when the Ollama model is warm, but will be higher on cold start or slower CPUs.
+  Do NOT conflate Qdrant-only latency (sub-1ms at 10K) with E2E latency (21ms).
+
+
+================================================================================
+5) COLD START + MEMORY: JIT vs Native AOT (measured, macOS arm64)
+================================================================================
+
+Command:
+  bash scripts/measure-cold-start.sh
+
+What "cold start" means here:
+  Process start → Kernel built with plugins → print STARTUP_MS → READY → exit
+  Flag: --startup-benchmark
+  5 runs each, after one warm disk run
+  Metric: in-process Stopwatch in Program.Main (STARTUP_MS)
+  Memory: macOS /usr/bin/time -l  "maximum resident set size" (bytes)
+
+JIT (PublishAot=false, self-contained osx-arm64):
+  Publish dir size ≈ 95,236,096 bytes (~90.8 MB)
+  STARTUP_AVG_MS   = 99
+  STARTUP_MIN_MS   = 97
+  STARTUP_MAX_MS   = 101
+  MAX_RSS_AVG_MB   = 63.52
+
+Native AOT (PublishAot=true, self-contained osx-arm64):
+  Main binary      ≈ 16,203,856 bytes (~15.5 MB)
+  Publish dir size ≈ 83,795,968 bytes (~79.9 MB)  [includes macOS dSYM debug bundle]
+  STARTUP_AVG_MS   = 48
+  STARTUP_MIN_MS   = 47
+  STARTUP_MAX_MS   = 50
+  MAX_RSS_AVG_MB   = 24.18
+
+dSYM note: The 79.9 MB AOT dir includes an 89 MB macOS .dSYM debug symbol bundle
+  which is platform-specific and not shipped in the Linux Docker image.
+  Linux AOT binary (from Docker build) = just the stripped binary + appsettings.json.
+
+Derived (from THESE measured averages):
+  Cold-start improvement:  (99 - 48) / 99  ≈ 51.5% faster
+  RSS reduction:           (63.52 - 24.18) / 63.52 ≈ 61.9% less RAM
+
+Honest LinkedIn/resume wording:
+  "Published with .NET Native AOT; on macOS arm64 self-contained builds,
+   agent startup averaged 48 ms vs 99 ms JIT (~52% faster), and peak RSS
+   averaged ~24 MB vs ~64 MB (~62% less memory). Logged in MEASUREMENTS.txt."
+
+DO NOT say the old invented marketing numbers:
+  3.2s → 310ms (90% faster)
+  205MB → 82MB (60% smaller)
+  Those were NEVER measured on this project. Actual improvement is real but
+  more modest: ~52% faster startup, ~62% less peak RAM.
+
+
+================================================================================
+6) AOT CONTAINER: Docker image + startup benchmark (measured)
+================================================================================
+
+Command (build):
+  docker build -t neurosearch-agent:aot .
+
+Dockerfile: multi-stage
+  Build stage:   mcr.microsoft.com/dotnet/sdk:10.0 + clang-18 (required by ILCompiler)
+  Publish flags: -r linux-arm64 /p:PublishAot=true /p:StripSymbols=true
+  Runtime stage: mcr.microsoft.com/dotnet/nightly/runtime-deps:10.0-noble-chiseled
+  No dSYM on Linux — output is just the stripped ELF binary + appsettings.json
+
+Command (run startup benchmark):
+  docker run --rm --network host -e SERPER_API_KEY=demo-key \
+    neurosearch-agent:aot --startup-benchmark
+
+Results:
+  IMAGE_SIZE        = 51.2 MB  (from: docker images neurosearch-agent:aot)
+  CONTAINER_STARTUP_MS = 23    (from: STARTUP_MS= line in container stdout)
+  Container output: printed STARTUP_MS=23 then READY (verified)
+  Platform:         linux/arm64
+
+Note on image size:
+  51.2 MB includes the chiseled Ubuntu Noble base (~12 MB) plus the stripped
+  AOT binary (~21 MB) and appsettings.json. No .NET runtime, no SDK, no shell.
+
+AOT sizes comparison:
+  macOS publish dir (with dSYM):     79.9 MB  (unusable in Docker; debug symbols)
+  Linux Docker image (stripped):     51.2 MB
+  JIT self-contained osx-arm64:      90.8 MB
+
+Honest wording:
+  "Multi-stage Docker build: SDK+clang build stage publishes Native AOT
+   linux-arm64 binary with StripSymbols=true; runtime stage uses
+   runtime-deps:10.0-noble-chiseled (no .NET runtime, no SDK).
+   Final image: 51.2 MB. Container startup: STARTUP_MS=23."
+
+DO NOT say:
+  "Deployed to Azure Container Apps"
+  "Production deployed" — this is a local Docker image only.
+
+
+================================================================================
+7) LINKEDIN-SAFE PROJECT BLURB (based ONLY on verified facts in this file)
+================================================================================
+
+Title:
+  NeuroSearch Agent
+
+Description:
+  Autonomous AI research agent in C#/.NET 10 using Microsoft Semantic Kernel
+  with auto function calling (WebSearch, WebScraper, VectorMemory plugins), 43
+  security unit tests (OWASP-oriented: SQL injection, XSS, SSRF, rate limiting),
+  local Ollama inference, and Qdrant vector memory. Benchmarked: Qdrant cosine
+  search p95 0.93 ms (10K) / 5.3 ms (100K vectors); end-to-end RAG p95 ≈ 23 ms
+  (embed + search, warm model). Native AOT publish: startup 48 ms vs 99 ms JIT
+  (~52% faster), peak RSS 24 MB vs 64 MB (~62% less). Containerised with a
+  multi-stage Dockerfile: 51.2 MB image, STARTUP_MS=23 in container.
+  Audit-as-error build gate: no moderate+ NuGet advisory tolerated.
+
+Skills:
+  C#, .NET 10, Microsoft Semantic Kernel, Qdrant, Docker, Native AOT,
+  Ollama, Vector Databases, RAG, OWASP Security
+
+
+================================================================================
+8) HOW TO REPRODUCE (copy/paste)
+================================================================================
+
+# Infra
+docker compose up -d
+# Ensure: ollama serve && ollama pull nomic-embed-text && ollama pull qwen3.5:9b
+
+# Security tests (43/43 expected)
+dotnet test tests/NeuroSearch.Tests/NeuroSearch.Tests.csproj -c Release
+
+# Qdrant latency — synthetic @ 10K
+dotnet run --project tools/NeuroSearch.Benchmarks -c Release -- --count 10000 --queries 200 --dim 768
+
+# Qdrant latency — synthetic @ 100K
+dotnet run --project tools/NeuroSearch.Benchmarks -c Release -- --count 100000 --queries 200 --dim 768 --collection neurosearch-100k
+
+# E2E RAG latency (real embeds + search)
+dotnet run --project tools/NeuroSearch.Benchmarks -c Release -- --e2e --queries 200 --warmup 20 --seed-count 500 --dim 768 --model nomic-embed-text
+
+# Cold start / memory JIT vs AOT (macOS)
+bash scripts/measure-cold-start.sh
+
+# AOT Docker image build + startup
+docker build -t neurosearch-agent:aot .
+docker run --rm --network host -e SERPER_API_KEY=demo-key neurosearch-agent:aot --startup-benchmark
+
+# Agent (interactive)
+dotnet run --project src/NeuroSearch.Agent -c Release
+
+
+================================================================================
+9) CLAIM CHECKLIST (use before posting to LinkedIn / resume)
+================================================================================
+
+[x] 43/43 security unit tests pass                         MEASURED
+[x] VectorMemory wired to Qdrant + Ollama embeddings       DONE
+[x] Qdrant p95 @ 10K vectors                               MEASURED (0.93 ms)
+[x] Qdrant p95 @ 100K vectors                              MEASURED (5.3 ms)
+[x] E2E embed+search RAG latency (p50/p95/p99)             MEASURED (20.7 / 22.9 / 23.9 ms)
+[x] Native AOT publish runs to READY                       MEASURED
+[x] AOT vs JIT startup + RSS (macOS arm64)                 MEASURED (48 vs 99 ms; 24 vs 64 MB)
+[x] Dependency CVE GHSA-2ww3-72rp-wpp4 resolved             FIXED (SK 1.78.0) — see §10
+[x] Audit-as-error NuGet gate (Directory.Build.props)      DONE — build fails on moderate+ advisory
+[x] JIT + AOT chat + tool smoke                            VERIFIED — see §10
+[x] AOT Docker container: image size + startup             MEASURED (51.2 MB, STARTUP_MS=23)
+[ ] Azure Container Apps live deploy                       NOT done
+[ ] Public blog / peer demo counts                         NOT verified
+
+Nothing in this checklist was invented. All [x] items have a corresponding
+measured command and raw output in sections 2–6 and §10 above.
+
+
+================================================================================
+10) Semantic Kernel stack upgrade (2026-07-27) — VERIFIED
+================================================================================
+
+Goal (project-first): stabilize runtime so the agent starts and uses tools reliably.
+
+BEFORE:
+  Microsoft.SemanticKernel                 1.32.0
+  Microsoft.SemanticKernel.Connectors.Ollama 1.32.0-alpha
+  NuGet NU1904 / GHSA-2ww3-72rp-wpp4 on Microsoft.SemanticKernel.Core 1.32.0
+  Default ChatModel=llama3:8b (NOT installed on this machine)
+  No NuGet audit gate
+
+AFTER:
+  Microsoft.SemanticKernel                 1.78.0   (Agent + Plugins aligned)
+  Microsoft.SemanticKernel.Connectors.Ollama 1.78.0-alpha  (aligned major/minor with SK)
+  ChatModel default                        qwen3.5:9b  (installed locally)
+  JsonSerializerIsReflectionEnabledByDefault = true  (required for SK/Ollama chat)
+  Trimmer roots added for OllamaSharp + Microsoft.Extensions.AI* (AOT chat was dropping model)
+  Directory.Build.props: NuGetAudit=true, WarningsAsErrors NU1901-NU1904
+
+What we fixed during verification:
+  1) Reflection JSON disabled → chat threw InvalidOperationException → enabled reflection JSON
+  2) Default model llama3:8b missing → switched default to installed qwen3.5:9b
+  3) AOT chat "model is required" → root OllamaSharp / MEAI assemblies for trimmer
+  4) Added --smoke-test mode for non-interactive verification
+  5) Removed unused System.Net.Http.Json package reference (NU1510)
+  6) Fixed docker-compose healthcheck (curl missing in qdrant image)
+  7) Added Directory.Build.props audit-as-error gate (session 2)
+
+Verification matrix (all PASS on this machine):
+  [x] dotnet list package --vulnerable --include-transitive  → no vulnerable packages
+  [x] dotnet build -c Release with Directory.Build.props    → 0 errors (audit gate ON)
+  [x] dotnet test  → 43/43 pass
+  [x] JIT --startup-benchmark → READY, 3 plugins
+  [x] JIT --smoke-test chat → SMOKE_PASS
+  [x] JIT --smoke-test VectorMemory tools (Save/Search/GetMemoryStats) → functions invoked, SMOKE_PASS
+  [x] AOT publish (PublishAot=true, osx-arm64) → succeeds
+  [x] AOT --startup-benchmark → READY
+  [x] AOT --smoke-test chat → SMOKE_PASS
+  [x] AOT --smoke-test GetMemoryStats → Function VectorMemory-GetMemoryStats succeeded, SMOKE_PASS
+  [x] docker build -t neurosearch-agent:aot . → 51.2 MB image
+  [x] docker run neurosearch-agent:aot --startup-benchmark → STARTUP_MS=23, READY
+
+Known remaining (honest):
+  - Ollama connector is still *-alpha (Microsoft has no stable Ollama package yet; 1.78.0-alpha matches SK 1.78.0)
+  - AOT publish still emits IL2026/IL3050 trim warnings on Http.Json helpers (runtime OK after roots)
+  - WebSearch tool not live-verified without SERPER_API_KEY
+  - Azure deployment: not done — Dockerfile containerises, does not deploy
+
+================================================================================
+END OF FILE — prefer this over docs/RESUME_BULLETS.md / INTERVIEW_PREP.md numbers
+================================================================================
